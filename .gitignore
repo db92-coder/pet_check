@@ -1,0 +1,31 @@
+﻿# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+env/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.next/
+*.log
+
+# Env files
+.env
+.env.*
+
+# Docker
+*.pid
+
+# IDE
+.vscode/
+.idea/
