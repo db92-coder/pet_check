@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16
+    container_name: petcheck_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pet_check}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - petcheck_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-pet_check}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: petcheck_backend
+    env_file: .env
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  mock-gov:
+    build:
+      context: ./services/mock_gov
+    container_name: petcheck_mock_gov
+    ports:
+      - "${MOCK_GOV_PORT:-8001}:8001"
+
+  mock-vet:
+    build:
+      context: ./services/mock_vet
+    container_name: petcheck_mock_vet
+    ports:
+      - "${MOCK_VET_PORT:-8002}:8002"
+
+volumes:
+  petcheck_pgdata:
