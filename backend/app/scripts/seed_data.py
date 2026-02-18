@@ -1,10 +1,9 @@
 from faker import Faker
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, UTC
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
-from app.db.init_db import init_db
 
 from app.db.models.user import User
 from app.db.models.owner import Owner
@@ -126,7 +125,7 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
 
     reasons = ["Annual check-up", "Vaccination", "Skin irritation", "Limping", "Dental", "Worming advice", "Weight check"]
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     for p in pets:
         # 1–3 visits per pet
         num_visits = random.randint(1, 3)
@@ -183,7 +182,6 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
     return (len(visits), len(weights), len(vax))
 
 if __name__ == "__main__":
-    init_db()
 
     session = SessionLocal()
     try:

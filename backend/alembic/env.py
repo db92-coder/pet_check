@@ -24,14 +24,7 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    # Docker: DATABASE_URL will be set -> use it (db hostname works inside Docker)
-    # Local/Windows: DATABASE_URL often not set (or set to docker value) -> use alembic.ini
-    url = os.getenv("DATABASE_URL")
-    if url:
-        return url
-    return config.get_main_option("sqlalchemy.url")
-
-
+    return os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
 
 
 def run_migrations_offline() -> None:
@@ -56,6 +49,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
         future=True,
     )
+
 
     with connectable.connect() as connection:
         context.configure(
