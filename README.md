@@ -41,7 +41,7 @@
 
 ---
 
-## 🗂️ Project Structure (typical)
+## 🗂️ Project Structure
 
 > Your exact folders may differ — adjust this section to match your repo layout.
 
