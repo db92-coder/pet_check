@@ -58,6 +58,7 @@ pet-check/
 │ └── Dockerfile
 ├── docker-compose.yml
 └── README.md
+```
 
 **🚀 Getting Started**
 Prerequisites
