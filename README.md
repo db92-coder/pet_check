@@ -61,6 +61,7 @@ pet-check/
 ```
 
 **🚀 Getting Started**
+
 Prerequisites
 
 Docker Desktop
