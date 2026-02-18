@@ -17,7 +17,7 @@
 ## ✨ Features
 
 - **PostgreSQL** relational database for core entities (currently `users`, `pets`)
-- **Seed data** scripts for fast local development (e.g., 100 users / 200 pets)
+- **Seed data** scripts for fast local development (e.g., 400 users / 800 pets)
 - **Container-first** workflow using Docker Compose
 - Structured backend setup (API + DB) ready for extension (auth, inspections, reports, uploads, etc.)
 
