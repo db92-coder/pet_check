@@ -1,6 +1,6 @@
 from faker import Faker
 import random
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
@@ -61,20 +61,64 @@ def seed_owners(session, users: list[User]) -> list[Owner]:
     session.commit()
     return owners
 
+DOG_BREEDS = [
+    "Labrador Retriever",
+    "German Shepherd",
+    "Golden Retriever",
+    "French Bulldog",
+    "Poodle",
+    "Rottweiler",
+    "Beagle",
+    "Dachshund",
+    "Border Collie",
+    "Staffordshire Bull Terrier",
+    "Cavalier King Charles Spaniel",
+    "Australian Shepherd",
+    "Siberian Husky",
+    "Boxer",
+    "Chihuahua",
+]
+
+CAT_BREEDS = [
+    "Domestic Shorthair",
+    "Domestic Longhair",
+    "Maine Coon",
+    "Ragdoll",
+    "Persian",
+    "Siamese",
+    "Bengal",
+    "British Shorthair",
+    "Sphynx",
+    "Scottish Fold",
+    "Abyssinian",
+    "Russian Blue",
+    "Norwegian Forest Cat",
+]
+
+
 def seed_pets(session, n: int = 400) -> list[Pet]:
     pets: list[Pet] = []
+
     for _ in range(n):
         species = random.choice(["Dog", "Cat"])
+
+        if species == "Dog":
+            breed = random.choice(DOG_BREEDS)
+        else:
+            breed = random.choice(CAT_BREEDS)
+
         pets.append(Pet(
             name=fake.first_name(),
             species=species,
-            breed=fake.word(),
+            breed=breed,
             sex=random.choice(["Male", "Female"]),
             date_of_birth=fake.date_between(start_date="-10y", end_date="today")
         ))
+
     session.add_all(pets)
     session.commit()
     return pets
+
 
 def seed_owner_pets(session, owners: list[Owner], pets: list[Pet]) -> int:
     links: list[OwnerPet] = []

@@ -37,6 +37,8 @@ export default function Pets() {
   { field: "sex", headerName: "Sex", width: 100 },
   { field: "date_of_birth", headerName: "DOB", width: 140 },
   { field: "created_at", headerName: "Created", width: 180 },
+  { field: "owner_email", headerName: "Owner Email", flex: 1, minWidth: 220 },
+  { field: "verified_identity_level", headerName: "Verified", width: 120 },
 ];
 
   return (

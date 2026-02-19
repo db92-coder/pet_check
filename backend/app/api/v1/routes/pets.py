@@ -40,6 +40,9 @@ def list_pets(limit: int = 200, offset: int = 0, db: Session = Depends(get_db)):
             Pet.name.label("name"),
             Pet.species.label("species"),
             Pet.breed.label("breed"),
+            Pet.sex.label("sex"),
+            Pet.date_of_birth.label("date_of_birth"),
+            Pet.created_at.label("created_at"),
 
             Owner.owner_id.label("owner_id"),
             Owner.verified_identity_level.label("verified_identity_level"),
