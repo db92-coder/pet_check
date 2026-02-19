@@ -1,28 +1,29 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
-from app.api.deps import get_db
-from app.models import Visit, Pet, Owner, Clinic  # adjust
+from app.api.v1.routes.deps import get_db
+from app.db.models.vet_visit import VetVisit
 
 router = APIRouter()
 
-@router.get("", summary="List visits (grid-ready)")
+@router.get("", summary="List visits (simple)")
 def list_visits(limit: int = 200, offset: int = 0, db: Session = Depends(get_db)):
-    stmt = (
+    rows = db.execute(
         select(
-            Visit.id.label("id"),
-            Visit.visit_date.label("visit_date"),
-            Pet.name.label("pet_name"),
-            Owner.full_name.label("owner_name"),
-            Owner.suburb.label("suburb"),
-            Clinic.name.label("clinic_name"),
-            Visit.reason.label("reason"),
+            VetVisit.visit_id.label("id"),
+            VetVisit.pet_id.label("pet_id"),
+            VetVisit.visit_datetime.label("visit_datetime"),
+            VetVisit.reason.label("reason"),
         )
-        .join(Pet, Pet.id == Visit.pet_id)
-        .join(Owner, Owner.id == Pet.owner_id)
-        .join(Clinic, Clinic.id == Visit.clinic_id)
-        .order_by(desc(Visit.visit_date))
+        .order_by(desc(VetVisit.visit_datetime))
         .offset(offset)
         .limit(limit)
-    )
-    return list(db.execute(stmt).mappings().all())
+    ).mappings().all()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["id"] = str(d["id"])
+        d["pet_id"] = str(d["pet_id"])
+        out.append(d)
+    return out

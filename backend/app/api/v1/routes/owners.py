@@ -1,22 +1,27 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from app.api.deps import get_db
-from app.models import Owner
+from app.api.v1.routes.deps import get_db
+from app.db.models.owner import Owner
 
 router = APIRouter()
 
-@router.get("", summary="List owners (grid-ready)")
+@router.get("", summary="List owners (simple)")
 def list_owners(limit: int = 200, offset: int = 0, db: Session = Depends(get_db)):
-    stmt = (
+    rows = db.execute(
         select(
-            Owner.id.label("id"),
-            Owner.full_name.label("full_name"),
-            Owner.suburb.label("suburb"),
-            Owner.phone.label("phone"),
-            Owner.email.label("email"),
+            Owner.owner_id.label("id"),
+            Owner.user_id.label("user_id"),
+            Owner.verified_identity_level.label("verified_identity_level"),
         )
         .offset(offset)
         .limit(limit)
-    )
-    return list(db.execute(stmt).mappings().all())
+    ).mappings().all()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["id"] = str(d["id"])
+        d["user_id"] = str(d["user_id"])
+        out.append(d)
+    return out

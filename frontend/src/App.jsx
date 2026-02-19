@@ -8,6 +8,7 @@ import AdminLayout from "./layouts/AdminLayout.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
+import Pets from "./pages/Pets.jsx";
 
 export default function App() {
   return (
@@ -18,7 +19,7 @@ export default function App() {
         <Route element={<AdminLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/pets" element={<Placeholder title="Pets" />} />
+          <Route path="/pets" element={<Pets />} />
           <Route path="/visits" element={<Placeholder title="Visits" />} />
 
           <Route element={<RequireRole roles={["ADMIN", "VET"]} />}>
