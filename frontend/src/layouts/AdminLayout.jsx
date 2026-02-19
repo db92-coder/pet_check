@@ -24,6 +24,8 @@ import EventNoteIcon from "@mui/icons-material/EventNote";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import BadgeIcon from "@mui/icons-material/Badge";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import InsightsIcon from "@mui/icons-material/Insights";
+
 import { useTheme } from "@mui/material/styles"; 
 
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -50,6 +52,7 @@ export default function AdminLayout() {
       { label: "Clinics", path: "/clinics", icon: <LocalHospitalIcon />, roles: ["ADMIN"] },
       { label: "Staff", path: "/staff", icon: <BadgeIcon />, roles: ["ADMIN"] },
       { label: "Users", path: "/users", icon: <AdminPanelSettingsIcon />, roles: ["ADMIN"] },
+      { label: "Analytics", path: "/admin/analytics", icon: <InsightsIcon />, roles: ["ADMIN"] },
     ],
     []
   );

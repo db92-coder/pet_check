@@ -9,6 +9,7 @@ import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
 import Pets from "./pages/Pets.jsx";
+import AdminAnalytics from "./pages/AdminAnalytics.jsx";
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="/clinics" element={<Placeholder title="Clinics" />} />
             <Route path="/staff" element={<Placeholder title="Staff" />} />
             <Route path="/users" element={<Placeholder title="Users" />} />
+            <Route path="/admin/analytics" element={<AdminAnalytics />} />
           </Route>
         </Route>
       </Route>
