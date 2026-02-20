@@ -1,157 +1,261 @@
-﻿# 🐾 Pet Check — Application & Database
+# Pet Check
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-informational)](https://www.docker.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-informational)](https://www.postgresql.org/)
 [![Python](https://img.shields.io/badge/Python-Backend-informational)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-informational)](https://fastapi.tiangolo.com/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-informational)](https://www.sqlalchemy.org/)
-[![Alembic](https://img.shields.io/badge/Alembic-Migrations-informational)](https://alembic.sqlalchemy.org/)
-[![Pydantic](https://img.shields.io/badge/Pydantic-Validation-informational)](https://docs.pydantic.dev/)
-[![Pytest](https://img.shields.io/badge/Pytest-Tests-informational)](https://pytest.org/)
+[![React](https://img.shields.io/badge/React-Frontend-informational)](https://react.dev/)
 
-> Pet Check is a Dockerised backend + database designed for recording and managing pet records (and related user data).  
-> This repo includes a PostgreSQL schema and seed scripts to quickly populate development data.
+Pet Check is a full-stack pet health management platform with role-based access, owner-facing pet care dashboards, analytics, and seeded development data.
 
----
+## Table of Contents
 
-## ✨ Features
+- [Overview](#overview)
+- [Core Features](#core-features)
+- [Role Access Matrix](#role-access-matrix)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [API Highlights](#api-highlights)
+- [Getting Started](#getting-started)
+- [Database Seeding](#database-seeding)
+- [Screenshots](#screenshots)
+- [Troubleshooting](#troubleshooting)
 
-- **PostgreSQL** relational database for core entities (currently `users`, `pets`)
-- **Seed data** scripts for fast local development (e.g., 400 users / 800 pets)
-- **Container-first** workflow using Docker Compose
-- Structured backend setup (API + DB) ready for extension (auth, inspections, reports, uploads, etc.)
+## Overview
 
----
+Pet Check supports:
 
-## 🧰 Tech Stack
+- Secure login based on credentials in the `users` table.
+- Dynamic role-aware navigation and page access.
+- Owner account creation with initial pet setup.
+- Ongoing owner workflows: add/edit pets, upload pet photos, track weight trends.
+- Pet health visibility: vaccinations, medications, microchip numbers.
+- Admin analytics for organisation and care-event trends.
 
-**Languages**
-- [Python](https://www.python.org/)
-- [SQL](https://www.postgresql.org/docs/current/sql.html)
+## Core Features
 
-**Frameworks & Libraries**
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [SQLAlchemy](https://www.sqlalchemy.org/)
-- [Alembic](https://alembic.sqlalchemy.org/)
-- [Pydantic](https://docs.pydantic.dev/)
+### Authentication and Users
 
-**Platform**
-- [Docker](https://www.docker.com/)
-- [PostgreSQL](https://www.postgresql.org/)
+- Login endpoint validates `email + password` against database records.
+- User profile (`/auth/me`) resolves active identity and role.
+- User roles persisted in DB (`users.role`): `ADMIN`, `VET`, `OWNER`.
+- Owner self-registration flow from login page with initial pet details.
 
----
+### Role-Based App Experience
 
-## 🗂️ Project Structure
+- Dynamic sidebar and route access based on role.
+- Admin and vet operational pages.
+- Owner-focused dashboard and care visibility.
 
-> Your exact folders may differ — adjust this section to match your repo layout.
+### Owner Dashboard
+
+- Personal profile snapshot.
+- Current pets list with editable details.
+- Add Pet modal (floating dialog).
+- Pet photo upload from local device (`jpg`, `jpeg`, `png`) stored in DB blob.
+- Upcoming appointments.
+- Vaccination due dates.
+- Pet-level health summary including:
+  - Microchip number
+  - Current vaccinations
+  - Current medications
+- Weight tracking:
+  - Add weight with date
+  - Line trend chart by date (x-axis) and weight in kg (y-axis)
+
+### Analytics
+
+Admin analytics page includes:
+
+- KPI totals
+- Care events by month
+- Vaccinations by type
+- Top organisations by visits
+- Visits by reason
+
+## Role Access Matrix
+
+| Route / Area | ADMIN | VET | OWNER |
+|---|---:|---:|---:|
+| Dashboard | Yes | Yes | Yes |
+| Pets | Yes | Yes | No |
+| Visits | Yes | Yes | No |
+| Owners | Yes | Yes | No |
+| Clinics | Yes | Yes | No |
+| Staff | Yes | Yes | No |
+| Users | Yes | Yes | No |
+| Admin Analytics | Yes | No | No |
+
+## Tech Stack
+
+### Backend
+
+- FastAPI
+- SQLAlchemy
+- PostgreSQL
+- Pydantic
+- python-multipart (file uploads)
+
+### Frontend
+
+- React + Vite
+- MUI
+- Axios
+- Nivo charts
+
+### Infra
+
+- Docker + Docker Compose
+
+## Project Structure
 
 ```text
 pet-check/
-├── backend/
-│ ├── app/
-│ │ ├── api/ # Route definitions
-│ │ ├── models/ # SQLAlchemy models
-│ │ ├── scripts/ # Seed & utility scripts
-│ │ ├── database.py # DB connection config
-│ │ └── main.py # FastAPI entry point
-│ ├── requirements.txt
-│ └── Dockerfile
-├── docker-compose.yml
-└── README.md
++-- backend/
+�   +-- app/
+�   �   +-- api/v1/routes/
+�   �   +-- db/models/
+�   �   +-- scripts/
+�   �   +-- main.py
+�   +-- requirements.txt
+�   +-- Dockerfile
++-- frontend/
+�   +-- src/
++-- services/
+�   +-- mock_gov/
+�   +-- mock_vet/
++-- pet_check_screenshots/
++-- docker-compose.yml
++-- README.md
 ```
 
-**🚀 Getting Started**
+## API Highlights
 
-Prerequisites
+### Auth
 
-Docker Desktop
- installed and running
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/auth/register-owner` (multipart owner registration + pet photo upload)
 
-1) Start the stack
+### Pets
 
-From the repo root:
+- `GET /api/v1/pets` (supports `user_id` / `owner_id` filtering)
+- `POST /api/v1/pets` (add pet)
+- `PUT /api/v1/pets/{pet_id}` (edit pet)
+- `GET /api/v1/pets/{pet_id}/photo` (pet photo blob)
+- `GET /api/v1/pets/{pet_id}/vaccinations`
+- `GET /api/v1/pets/{pet_id}/medications`
+- `GET /api/v1/pets/{pet_id}/weights`
+- `POST /api/v1/pets/{pet_id}/weights`
 
+### Analytics
+
+- `GET /api/v1/analytics/kpis`
+- `GET /api/v1/analytics/care-events-by-month`
+- `GET /api/v1/analytics/vaccinations-by-type`
+- `GET /api/v1/analytics/top-organisations-by-visits`
+- `GET /api/v1/analytics/visits-by-reason`
+
+## Getting Started
+
+### Prerequisites
+
+- Docker Desktop running
+
+### Start the stack
+
+From repo root:
+
+```bash
 docker compose up -d --build
+```
 
-2) Confirm containers are running
+### Verify containers
+
+```bash
 docker ps
+```
 
-3) Seed the database (dev data)
+## Database Seeding
+
+Run seed:
+
+```bash
 docker exec -it petcheck_backend python -m app.scripts.seed_data
+```
 
-4) Quick DB sanity check
+This will:
 
-List tables:
+- Reset core data tables.
+- Seed users with generated passwords and roles.
+- Seed owners, pets, visits, weights, vaccinations, and medications.
+- Export credentials CSV to:
+  - `backend/app/scripts/seeded_user_credentials.csv`
 
-docker exec -it petcheck_db psql -U postgres -d pet_check -c "\dt"
+### Optional utility scripts
 
+Normalize existing user phone numbers to AU mobile format:
 
-Count rows:
+```bash
+docker exec -it petcheck_backend python -m app.scripts.normalize_au_mobile_numbers
+```
 
-docker exec -it petcheck_db psql -U postgres -d pet_check -c "SELECT COUNT(*) FROM users;"
-docker exec -it petcheck_db psql -U postgres -d pet_check -c "SELECT COUNT(*) FROM pets;"
+## Screenshots
 
-**🧪 Useful Database Commands**
+Screenshots should live in the repository root under:
 
-Open an interactive psql session:
+- `pet_check_screenshots/`
 
-docker exec -it petcheck_db psql -U postgres -d pet_check
+That location is already correct in your project.
 
+### Login and Create User
 
-Inside psql, common commands:
+![Login Page](pet_check_screenshots/login_page.png)
+![Create User](pet_check_screenshots/create_user.png)
 
-\dt              -- list tables
-\d users         -- describe table
-\d pets          -- describe table
-SELECT NOW();    -- quick check
-\q               -- quit
+### Owner Experience
 
-🧬 ER Diagram (Mermaid)
+![Owner Dashboard](pet_check_screenshots/owner_page_example.png)
+![Owner Add Pet](pet_check_screenshots/user_add_pet.png)
+![Owner Weight Trend](pet_check_screenshots/owner_page_weight_trend.png)
 
-This ERD reflects the current baseline tables (users, pets).
-Update the attributes below to match your actual columns when they evolve.
+### Vet and Admin Experience
 
-erDiagram
-    USERS ||--o{ PETS : owns
+![Vet Page](pet_check_screenshots/vet_page_example.png)
+![Admin Page](pet_check_screenshots/admin_page_example.png)
+![Admin Analytics](pet_check_screenshots/admin_analyics_page.png)
 
-    USERS {
-        int id PK
-        string full_name
-        string email
-        string phone
-        timestamp created_at
-    }
+### New User Example
 
-    PETS {
-        int id PK
-        int user_id FK
-        string name
-        string species
-        string breed
-        date date_of_birth
-        timestamp created_at
-    }
+![New User Example](pet_check_screenshots/new_user_example.png)
 
+## Troubleshooting
 
+### CSV not appearing locally after seed
 
-**🧭 Roadmap**
+Ensure backend has bind mount in `docker-compose.yml`:
 
-Authentication + role-based access (admin/inspector/user)
+```yaml
+backend:
+  volumes:
+    - ./backend:/app
+```
 
-Pet check history / inspections table(s)
+Then rerun seed.
 
-File uploads (photos, evidence)
+### Roles in UI not matching DB
 
-Reporting + export (CSV/PDF)
+- Rebuild backend container.
+- Clear browser auth cache (`access_token`, `auth_user`).
+- Log in again and inspect `/api/v1/auth/login` response.
 
-CI pipeline (lint + tests + build)
+### Image upload errors
 
-**📸 Screenshots**
+- Confirm `python-multipart` is installed (included in `backend/requirements.txt`).
+- Ensure image is `jpg/jpeg/png` and within size limit.
 
-
-
-**📝 Licence**
+## License
 
 Copyright (c) 2026 Daniel Broadby
 All rights reserved.
-
