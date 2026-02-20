@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -15,11 +16,17 @@ from app.db.models.pet import Pet
 from app.db.models.user import User
 from app.db.models.vaccination import Vaccination
 from app.db.models.weight import Weight
+from app.db.models.medication import Medication
 
 router = APIRouter()
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+class WeightCreatePayload(BaseModel):
+    weight_kg: float
+    measured_at: datetime | None = None
 
 
 # -------------------------
@@ -73,6 +80,7 @@ def list_pets(
             Pet.species.label("species"),
             Pet.breed.label("breed"),
             Pet.sex.label("sex"),
+            Pet.microchip_number.label("microchip_number"),
             Pet.photo_url.label("photo_url"),
             Pet.photo_mime_type.label("photo_mime_type"),
             Pet.date_of_birth.label("date_of_birth"),
@@ -127,6 +135,7 @@ async def create_pet(
     species: str = Form(...),
     breed: str | None = Form(default=None),
     sex: str | None = Form(default=None),
+    microchip_number: str | None = Form(default=None),
     date_of_birth: date | None = Form(default=None),
     photo: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
@@ -144,6 +153,7 @@ async def create_pet(
         species=species.strip(),
         breed=_normalize_optional(breed),
         sex=_normalize_optional(sex),
+        microchip_number=_normalize_optional(microchip_number),
         date_of_birth=date_of_birth,
         photo_data=photo_data,
         photo_mime_type=photo_mime_type,
@@ -173,6 +183,7 @@ async def create_pet(
         "species": pet.species,
         "breed": pet.breed,
         "sex": pet.sex,
+        "microchip_number": pet.microchip_number,
         "date_of_birth": pet.date_of_birth,
         "has_photo": bool(pet.photo_mime_type),
     }
@@ -185,6 +196,7 @@ async def update_pet(
     species: str = Form(...),
     breed: str | None = Form(default=None),
     sex: str | None = Form(default=None),
+    microchip_number: str | None = Form(default=None),
     date_of_birth: date | None = Form(default=None),
     photo: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
@@ -199,6 +211,7 @@ async def update_pet(
     pet.species = species.strip()
     pet.breed = _normalize_optional(breed)
     pet.sex = _normalize_optional(sex)
+    pet.microchip_number = _normalize_optional(microchip_number)
     pet.date_of_birth = date_of_birth
 
     if photo:
@@ -216,6 +229,7 @@ async def update_pet(
         "species": pet.species,
         "breed": pet.breed,
         "sex": pet.sex,
+        "microchip_number": pet.microchip_number,
         "date_of_birth": pet.date_of_birth,
         "has_photo": bool(pet.photo_mime_type),
     }
@@ -253,6 +267,7 @@ def get_pet(
         "species": pet.species,
         "breed": pet.breed,
         "sex": pet.sex,
+        "microchip_number": pet.microchip_number,
         "photo_url": pet.photo_url,
         "has_photo": bool(pet.photo_mime_type),
         "date_of_birth": pet.date_of_birth,
@@ -293,6 +308,38 @@ def list_pet_weights(
     return cleaned
 
 
+@router.post("/{pet_id}/weights", summary="Add weight for a pet")
+def create_pet_weight(
+    pet_id: str,
+    payload: WeightCreatePayload,
+    db: Session = Depends(get_db),
+):
+    pid = _parse_uuid(pet_id, "pet_id")
+    pet = db.execute(select(Pet).where(Pet.pet_id == pid)).scalar_one_or_none()
+    if not pet:
+        raise HTTPException(status_code=404, detail="Pet not found")
+
+    measured_at = payload.measured_at or datetime.utcnow()
+    weight = Weight(
+        pet_id=pid,
+        visit_id=None,
+        measured_at=measured_at,
+        weight_kg=payload.weight_kg,
+        measured_by=None,
+    )
+    db.add(weight)
+    db.commit()
+    db.refresh(weight)
+
+    return {
+        "id": str(weight.weight_id),
+        "pet_id": str(weight.pet_id),
+        "weight_kg": float(weight.weight_kg),
+        "measured_at": weight.measured_at,
+        "measured_by": None,
+    }
+
+
 @router.get("/{pet_id}/vaccinations", summary="List vaccinations for a pet")
 def list_pet_vaccinations(
     pet_id: str,
@@ -326,3 +373,32 @@ def list_pet_vaccinations(
         d["visit_id"] = str(d["visit_id"]) if isinstance(d.get("visit_id"), uuid.UUID) else d.get("visit_id")
         cleaned.append(d)
     return cleaned
+
+
+@router.get("/{pet_id}/medications", summary="List medications for a pet")
+def list_pet_medications(
+    pet_id: str,
+    db: Session = Depends(get_db),
+):
+    pid = _parse_uuid(pet_id, "pet_id")
+    rows = db.execute(
+        select(
+            Medication.medication_id.label("id"),
+            Medication.pet_id.label("pet_id"),
+            Medication.name.label("name"),
+            Medication.dosage.label("dosage"),
+            Medication.instructions.label("instructions"),
+            Medication.start_date.label("start_date"),
+            Medication.end_date.label("end_date"),
+        )
+        .where(Medication.pet_id == pid)
+        .order_by(desc(Medication.start_date))
+    ).mappings().all()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["id"] = str(d["id"]) if isinstance(d.get("id"), uuid.UUID) else d.get("id")
+        d["pet_id"] = str(d["pet_id"]) if isinstance(d.get("pet_id"), uuid.UUID) else d.get("pet_id")
+        out.append(d)
+    return out

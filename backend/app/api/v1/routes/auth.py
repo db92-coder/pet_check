@@ -32,6 +32,7 @@ class PetCreatePayload(BaseModel):
     species: str
     breed: str | None = None
     sex: str | None = None
+    microchip_number: str | None = None
     date_of_birth: date | None = None
     photo_url: str | None = None
 
@@ -135,6 +136,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
             species=payload.pet.species,
             breed=payload.pet.breed,
             sex=payload.pet.sex,
+            microchip_number=payload.pet.microchip_number,
             date_of_birth=payload.pet.date_of_birth,
             photo_url=payload.pet.photo_url,
         )
@@ -166,6 +168,7 @@ async def register_owner(
     pet_species: str = Form(...),
     pet_breed: str | None = Form(default=None),
     pet_sex: str | None = Form(default=None),
+    pet_microchip_number: str | None = Form(default=None),
     pet_date_of_birth: date | None = Form(default=None),
     photo: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
@@ -197,6 +200,7 @@ async def register_owner(
         species=pet_species.strip(),
         breed=pet_breed.strip() if pet_breed and pet_breed.strip() else None,
         sex=pet_sex.strip() if pet_sex and pet_sex.strip() else None,
+        microchip_number=pet_microchip_number.strip() if pet_microchip_number and pet_microchip_number.strip() else None,
         date_of_birth=pet_date_of_birth,
         photo_data=photo_data,
         photo_mime_type=photo_mime_type,

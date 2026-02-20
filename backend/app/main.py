@@ -102,6 +102,14 @@ with engine.begin() as conn:
         text(
             """
             ALTER TABLE pets
+            ADD COLUMN IF NOT EXISTS microchip_number VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE pets
             ADD COLUMN IF NOT EXISTS photo_data BYTEA;
             """
         )
@@ -111,6 +119,21 @@ with engine.begin() as conn:
             """
             ALTER TABLE pets
             ADD COLUMN IF NOT EXISTS photo_mime_type VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS medications (
+                medication_id UUID PRIMARY KEY,
+                pet_id UUID NOT NULL REFERENCES pets(pet_id) ON DELETE CASCADE,
+                name VARCHAR NOT NULL,
+                dosage VARCHAR,
+                instructions VARCHAR,
+                start_date DATE,
+                end_date DATE
+            );
             """
         )
     )

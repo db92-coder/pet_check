@@ -62,6 +62,7 @@ export function AuthProvider({ children }) {
     formData.append("pet_species", payload.pet_species);
     formData.append("pet_breed", payload.pet_breed || "");
     formData.append("pet_sex", payload.pet_sex || "");
+    formData.append("pet_microchip_number", payload.pet_microchip_number || "");
     formData.append("pet_date_of_birth", payload.pet_date_of_birth || "");
     if (payload.pet_photo_file) {
       formData.append("photo", payload.pet_photo_file);

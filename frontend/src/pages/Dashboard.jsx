@@ -16,11 +16,13 @@ import {
   ListItem,
   ListItemAvatar,
   ListItemText,
+  MenuItem,
   Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import { ResponsiveLine } from "@nivo/line";
 
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -44,6 +46,7 @@ const emptyPetForm = {
   species: "",
   breed: "",
   sex: "",
+  microchip_number: "",
   date_of_birth: "",
   photo: null,
 };
@@ -58,7 +61,14 @@ export default function Dashboard() {
   const [pets, setPets] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [vaccinationDue, setVaccinationDue] = useState([]);
+  const [vaccinations, setVaccinations] = useState([]);
+  const [medications, setMedications] = useState([]);
+  const [petWeights, setPetWeights] = useState([]);
   const [ownerNotResolved, setOwnerNotResolved] = useState(false);
+  const [selectedPetId, setSelectedPetId] = useState("");
+  const [weightKg, setWeightKg] = useState("");
+  const [weightDate, setWeightDate] = useState("");
+  const [savingWeight, setSavingWeight] = useState(false);
 
   const [petDialogOpen, setPetDialogOpen] = useState(false);
   const [editingPetId, setEditingPetId] = useState(null);
@@ -108,6 +118,22 @@ export default function Dashboard() {
           })
         )
       ).flat();
+      setVaccinations(vaccinationRows);
+
+      const medicationRows = (
+        await Promise.all(
+          currentPets.map(async (pet) => {
+            try {
+              const res = await api.get(`/pets/${pet.id}/medications`);
+              const rows = Array.isArray(res.data) ? res.data : [];
+              return rows.map((row) => ({ ...row, pet_name: pet.name, pet_id: pet.id }));
+            } catch {
+              return [];
+            }
+          })
+        )
+      ).flat();
+      setMedications(medicationRows);
 
       const due = vaccinationRows
         .filter((v) => v.due_at)
@@ -157,6 +183,96 @@ export default function Dashboard() {
     return map;
   }, [pets]);
 
+  useEffect(() => {
+    if (!pets.length) {
+      setSelectedPetId("");
+      return;
+    }
+    if (!selectedPetId || !pets.some((p) => String(p.id) === String(selectedPetId))) {
+      setSelectedPetId(String(pets[0].id));
+    }
+  }, [pets, selectedPetId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadWeights() {
+      if (!selectedPetId) {
+        setPetWeights([]);
+        return;
+      }
+      try {
+        const res = await api.get(`/pets/${selectedPetId}/weights`, { params: { limit: 500 } });
+        if (cancelled) return;
+        setPetWeights(Array.isArray(res.data) ? res.data : []);
+      } catch {
+        if (cancelled) return;
+        setPetWeights([]);
+      }
+    }
+    loadWeights();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPetId]);
+
+  const weightSeries = useMemo(() => {
+    const rows = [...petWeights].sort((a, b) => new Date(a.measured_at) - new Date(b.measured_at));
+    return [
+      {
+        id: "Weight (kg)",
+        data: rows.map((r) => ({
+          x: formatDate(r.measured_at),
+          y: Number(r.weight_kg ?? 0),
+        })),
+      },
+    ];
+  }, [petWeights]);
+
+  const hasWeightData = weightSeries[0]?.data?.length > 0;
+
+  async function addWeightRecord(e) {
+    e.preventDefault();
+    if (!selectedPetId || !weightKg) return;
+    setSavingWeight(true);
+    try {
+      await api.post(`/pets/${selectedPetId}/weights`, {
+        weight_kg: Number(weightKg),
+        measured_at: weightDate ? `${weightDate}T12:00:00` : undefined,
+      });
+      setWeightKg("");
+      setWeightDate("");
+      const res = await api.get(`/pets/${selectedPetId}/weights`, { params: { limit: 500 } });
+      setPetWeights(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "Failed to add weight record.");
+    } finally {
+      setSavingWeight(false);
+    }
+  }
+
+  const vaccinationsByPet = useMemo(() => {
+    const map = new Map();
+    for (const row of vaccinations) {
+      const key = String(row.pet_id);
+      const list = map.get(key) || [];
+      list.push(row);
+      map.set(key, list);
+    }
+    return map;
+  }, [vaccinations]);
+
+  const medicationsByPet = useMemo(() => {
+    const map = new Map();
+    for (const row of medications) {
+      const key = String(row.pet_id);
+      const list = map.get(key) || [];
+      list.push(row);
+      map.set(key, list);
+    }
+    return map;
+  }, [medications]);
+
   function openAddPetDialog() {
     setEditingPetId(null);
     setPetForm(emptyPetForm);
@@ -170,6 +286,7 @@ export default function Dashboard() {
       species: pet.species || "",
       breed: pet.breed || "",
       sex: pet.sex || "",
+      microchip_number: pet.microchip_number || "",
       date_of_birth: pet.date_of_birth ? String(pet.date_of_birth).slice(0, 10) : "",
       photo: null,
     });
@@ -192,6 +309,7 @@ export default function Dashboard() {
       fd.append("species", petForm.species);
       fd.append("breed", petForm.breed || "");
       fd.append("sex", petForm.sex || "");
+      fd.append("microchip_number", petForm.microchip_number || "");
       fd.append("date_of_birth", petForm.date_of_birth || "");
       if (petForm.photo) {
         fd.append("photo", petForm.photo);
@@ -285,6 +403,20 @@ export default function Dashboard() {
                   <List dense>
                     {pets.map((pet) => {
                       const photoSrc = pet.has_photo ? `${api.defaults.baseURL}/pets/${pet.id}/photo` : null;
+                      const petVaccinations = vaccinationsByPet.get(String(pet.id)) || [];
+                      const petMedications = medicationsByPet.get(String(pet.id)) || [];
+                      const vaccineSummary = petVaccinations.length
+                        ? petVaccinations
+                            .slice(0, 3)
+                            .map((v) => v.vaccine_type || "Vaccine")
+                            .join(", ")
+                        : "None recorded";
+                      const medicationSummary = petMedications.length
+                        ? petMedications
+                            .slice(0, 3)
+                            .map((m) => m.name || "Medication")
+                            .join(", ")
+                        : "None prescribed";
                       return (
                         <ListItem key={pet.id} disableGutters secondaryAction={
                           user?.role === "OWNER" ? (
@@ -296,7 +428,12 @@ export default function Dashboard() {
                           </ListItemAvatar>
                           <ListItemText
                             primary={`${pet.name || "Unnamed"} (${pet.species || "Unknown"})`}
-                            secondary={`Breed: ${pet.breed || "-"} | Sex: ${pet.sex || "-"} | DOB: ${formatDate(pet.date_of_birth)}`}
+                            secondary={
+                              `Breed: ${pet.breed || "-"} | Sex: ${pet.sex || "-"} | DOB: ${formatDate(pet.date_of_birth)} | Microchip: ${pet.microchip_number || "Not recorded"}\n` +
+                              `Vaccinations: ${vaccineSummary}\n` +
+                              `Medications: ${medicationSummary}`
+                            }
+                            secondaryTypographyProps={{ sx: { whiteSpace: "pre-line" } }}
                           />
                         </ListItem>
                       );
@@ -347,6 +484,76 @@ export default function Dashboard() {
                   </List>
                 )}
               </Paper>
+
+              <Paper sx={{ p: 2, mt: 2 }}>
+                <Typography variant="h6" fontWeight={700}>Weight Trend</Typography>
+                <Divider sx={{ my: 1.5 }} />
+
+                <Box component="form" onSubmit={addWeightRecord} sx={{ display: "grid", gap: 1.5, mb: 2 }}>
+                  <TextField
+                    select
+                    label="Select Pet"
+                    value={selectedPetId}
+                    onChange={(e) => setSelectedPetId(e.target.value)}
+                  >
+                    {pets.map((pet) => (
+                      <MenuItem key={pet.id} value={pet.id}>
+                        {pet.name} ({pet.species})
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <TextField
+                      label="Date"
+                      type="date"
+                      value={weightDate}
+                      onChange={(e) => setWeightDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      fullWidth
+                    />
+                    <TextField
+                      label="Weight (kg)"
+                      type="number"
+                      value={weightKg}
+                      onChange={(e) => setWeightKg(e.target.value)}
+                      inputProps={{ step: "0.01", min: "0.1" }}
+                      fullWidth
+                    />
+                    <Button type="submit" variant="contained" disabled={savingWeight || !selectedPetId}>
+                      {savingWeight ? "Saving..." : "Add Weight"}
+                    </Button>
+                  </Stack>
+                </Box>
+
+                <Box sx={{ height: 280 }}>
+                  {hasWeightData ? (
+                    <ResponsiveLine
+                      data={weightSeries}
+                      margin={{ top: 20, right: 20, bottom: 60, left: 60 }}
+                      xScale={{ type: "point" }}
+                      yScale={{ type: "linear", stacked: false }}
+                      axisBottom={{
+                        tickRotation: -30,
+                        legend: "Date",
+                        legendOffset: 48,
+                        legendPosition: "middle",
+                      }}
+                      axisLeft={{
+                        legend: "kg",
+                        legendOffset: -45,
+                        legendPosition: "middle",
+                      }}
+                      enablePoints
+                      useMesh
+                      colors={{ scheme: "set2" }}
+                    />
+                  ) : (
+                    <Typography sx={{ opacity: 0.75 }}>
+                      No weight records yet for the selected pet.
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
             </Grid>
           </Grid>
         </>
@@ -377,6 +584,11 @@ export default function Dashboard() {
               label="Sex"
               value={petForm.sex}
               onChange={(e) => setPetForm((p) => ({ ...p, sex: e.target.value }))}
+            />
+            <TextField
+              label="Microchip Number"
+              value={petForm.microchip_number}
+              onChange={(e) => setPetForm((p) => ({ ...p, microchip_number: e.target.value }))}
             />
             <TextField
               label="DOB"

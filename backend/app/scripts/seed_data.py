@@ -18,6 +18,7 @@ from app.db.models.organisation_member import OrganisationMember
 from app.db.models.vet_visit import VetVisit
 from app.db.models.weight import Weight
 from app.db.models.vaccination import Vaccination
+from app.db.models.medication import Medication
 
 fake = Faker()
 
@@ -45,6 +46,20 @@ def ensure_user_auth_columns(session) -> None:
     session.commit()
 
 
+def ensure_pet_health_columns(session) -> None:
+    session.execute(text("ALTER TABLE pets ADD COLUMN IF NOT EXISTS microchip_number VARCHAR;"))
+    session.execute(text("CREATE TABLE IF NOT EXISTS medications ("
+                         "medication_id UUID PRIMARY KEY,"
+                         "pet_id UUID NOT NULL REFERENCES pets(pet_id) ON DELETE CASCADE,"
+                         "name VARCHAR NOT NULL,"
+                         "dosage VARCHAR,"
+                         "instructions VARCHAR,"
+                         "start_date DATE,"
+                         "end_date DATE"
+                         ");"))
+    session.commit()
+
+
 def export_credentials(users: list[User]) -> Path:
     out_path = Path(__file__).resolve().parent / "seeded_user_credentials.csv"
     with out_path.open("w", newline="", encoding="utf-8") as f:
@@ -58,6 +73,7 @@ def export_credentials(users: list[User]) -> Path:
 def reset_db(session) -> None:
     session.execute(text("""
         TRUNCATE TABLE
+          medications,
           vaccinations,
           weights,
           vet_visits,
@@ -140,6 +156,14 @@ CAT_BREEDS = [
     "Norwegian Forest Cat",
 ]
 
+MEDICATION_POOL = [
+    ("Carprofen", "25mg twice daily", "Give with food"),
+    ("Prednisone", "5mg once daily", "Morning dose preferred"),
+    ("Amoxicillin", "250mg twice daily", "Complete full course"),
+    ("Gabapentin", "100mg at night", "For pain management"),
+    ("Apoquel", "16mg once daily", "For itch control"),
+]
+
 
 def seed_pets(session, n: int = 400) -> list[Pet]:
     pets: list[Pet] = []
@@ -153,6 +177,7 @@ def seed_pets(session, n: int = 400) -> list[Pet]:
             species=species,
             breed=breed,
             sex=random.choice(["Male", "Female"]),
+            microchip_number="".join(random.choice(string.digits) for _ in range(15)),
             date_of_birth=fake.date_between(start_date="-10y", end_date="today")
         ))
 
@@ -268,11 +293,33 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
     return (len(visits), len(weights), len(vax))
 
 
+def seed_medications(session, pets: list[Pet]) -> int:
+    meds: list[Medication] = []
+    for pet in pets:
+        if random.random() < 0.35:
+            name, dosage, instructions = random.choice(MEDICATION_POOL)
+            meds.append(
+                Medication(
+                    pet_id=pet.pet_id,
+                    name=name,
+                    dosage=dosage,
+                    instructions=instructions,
+                    start_date=fake.date_between(start_date="-6m", end_date="today"),
+                    end_date=fake.date_between(start_date="today", end_date="+6m") if random.random() < 0.7 else None,
+                )
+            )
+    session.add_all(meds)
+    session.commit()
+    return len(meds)
+
+
 if __name__ == "__main__":
     session = SessionLocal()
     try:
         print("Ensuring users auth columns...")
         ensure_user_auth_columns(session)
+        print("Ensuring pet health columns...")
+        ensure_pet_health_columns(session)
 
         print("Resetting tables...")
         reset_db(session)
@@ -298,8 +345,9 @@ if __name__ == "__main__":
 
         print("Seeding visits + weights + vaccinations...")
         visit_n, weight_n, vax_n = seed_visits_weights_vax(session, pets, clinics, vet_users)
+        med_n = seed_medications(session, pets)
 
-        print(f"Done. visits={visit_n}, weights={weight_n}, vaccinations={vax_n}")
+        print(f"Done. visits={visit_n}, weights={weight_n}, vaccinations={vax_n}, medications={med_n}")
         print("Generated unique passwords for all users in users.password")
         print(f"Credentials export: {creds_path}")
     finally:

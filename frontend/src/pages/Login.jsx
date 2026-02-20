@@ -47,6 +47,7 @@ export default function Login() {
       pet_species: data.get("pet_species"),
       pet_breed: data.get("pet_breed"),
       pet_sex: data.get("pet_sex"),
+      pet_microchip_number: data.get("pet_microchip_number"),
       pet_date_of_birth: data.get("pet_date_of_birth"),
       pet_photo_file: data.get("pet_photo_file"),
     };
@@ -113,6 +114,7 @@ export default function Login() {
               <TextField name="pet_breed" label="Breed" fullWidth />
               <TextField name="pet_sex" label="Sex" fullWidth />
             </Stack>
+            <TextField name="pet_microchip_number" label="Microchip Number" fullWidth />
             <TextField
               name="pet_date_of_birth"
               label="Pet DOB"

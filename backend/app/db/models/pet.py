@@ -23,6 +23,7 @@ class Pet(Base):
     species: Mapped[str] = mapped_column(String, nullable=False)
     breed: Mapped[str] = mapped_column(String, nullable=True)
     sex: Mapped[str] = mapped_column(String, nullable=True)
+    microchip_number: Mapped[str] = mapped_column(String, nullable=True)
     photo_url: Mapped[str] = mapped_column(String, nullable=True)
     photo_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
     photo_mime_type: Mapped[str] = mapped_column(String, nullable=True)
