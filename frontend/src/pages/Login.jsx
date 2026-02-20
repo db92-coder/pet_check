@@ -38,13 +38,17 @@ export default function Login() {
           Sign in to manage pets, visits and clinic records.
         </Typography>
 
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Use any email/password pair from the users table.
+        </Alert>
+
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         <Box component="form" onSubmit={onSubmit} sx={{ display: "grid", gap: 2 }}>
           <TextField name="email" label="Email" autoComplete="email" required />
           <TextField name="password" label="Password" type="password" autoComplete="current-password" required />
           <Button type="submit" variant="contained" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Signing in..." : "Sign in"}
           </Button>
         </Box>
       </Paper>

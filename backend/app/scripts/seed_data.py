@@ -1,5 +1,6 @@
 from faker import Faker
 import random
+import string
 from datetime import datetime, UTC, timedelta
 from sqlalchemy import text
 
@@ -21,8 +22,12 @@ fake = Faker()
 DOG_VAX = ["C5", "C3", "Rabies"]
 CAT_VAX = ["F3", "FIV", "Rabies"]
 
+def generate_password(length: int = 12) -> str:
+    chars = string.ascii_letters + string.digits
+    return "".join(random.choice(chars) for _ in range(length))
+
+
 def reset_db(session) -> None:
-    # Drop in FK-safe order (truncate with cascade helps, but order keeps it tidy)
     session.execute(text("""
         TRUNCATE TABLE
           vaccinations,
@@ -38,17 +43,20 @@ def reset_db(session) -> None:
     """))
     session.commit()
 
+
 def seed_users(session, n: int = 200) -> list[User]:
     users: list[User] = []
     for _ in range(n):
         users.append(User(
             email=fake.unique.email(),
+            password=generate_password(),
             full_name=fake.name(),
             phone=fake.phone_number()
         ))
     session.add_all(users)
     session.commit()
     return users
+
 
 def seed_owners(session, users: list[User]) -> list[Owner]:
     owners: list[Owner] = []
@@ -60,6 +68,7 @@ def seed_owners(session, users: list[User]) -> list[Owner]:
     session.add_all(owners)
     session.commit()
     return owners
+
 
 DOG_BREEDS = [
     "Labrador Retriever",
@@ -101,11 +110,7 @@ def seed_pets(session, n: int = 400) -> list[Pet]:
 
     for _ in range(n):
         species = random.choice(["Dog", "Cat"])
-
-        if species == "Dog":
-            breed = random.choice(DOG_BREEDS)
-        else:
-            breed = random.choice(CAT_BREEDS)
+        breed = random.choice(DOG_BREEDS if species == "Dog" else CAT_BREEDS)
 
         pets.append(Pet(
             name=fake.first_name(),
@@ -135,9 +140,10 @@ def seed_owner_pets(session, owners: list[Owner], pets: list[Pet]) -> int:
     session.commit()
     return len(links)
 
+
 def seed_clinics(session, n: int = 5) -> list[Organisation]:
     clinics: list[Organisation] = []
-    for i in range(n):
+    for _ in range(n):
         clinics.append(Organisation(
             name=f"{fake.last_name()} Veterinary Clinic",
             org_type="vet_clinic"
@@ -145,6 +151,7 @@ def seed_clinics(session, n: int = 5) -> list[Organisation]:
     session.add_all(clinics)
     session.commit()
     return clinics
+
 
 def seed_vet_staff(session, users: list[User], clinics: list[Organisation], n_vets: int = 25) -> list[User]:
     vet_users = random.sample(users, k=min(n_vets, len(users)))
@@ -162,7 +169,8 @@ def seed_vet_staff(session, users: list[User], clinics: list[Organisation], n_ve
     session.commit()
     return vet_users
 
-def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation], vet_users: list[User]) -> tuple[int,int,int]:
+
+def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation], vet_users: list[User]) -> tuple[int, int, int]:
     visits: list[VetVisit] = []
     weights: list[Weight] = []
     vax: list[Vaccination] = []
@@ -171,7 +179,6 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
 
     now = datetime.now(UTC)
     for p in pets:
-        # 1–3 visits per pet
         num_visits = random.randint(1, 3)
         for _ in range(num_visits):
             visit_dt = now - timedelta(days=random.randint(0, 365 * 3))
@@ -191,10 +198,8 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
     session.add_all(visits)
     session.commit()
 
-    # Build weights + some vaccinations per visit
     for v in visits:
-        # 1 weight per visit
-        base = 10.0 if random.random() < 0.5 else 4.5  # rough dog vs cat bias
+        base = 10.0 if random.random() < 0.5 else 4.5
         weight_val = max(1.5, random.gauss(mu=base, sigma=2.0))
         weights.append(Weight(
             pet_id=v.pet_id,
@@ -204,11 +209,8 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
             measured_by=v.vet_user_id
         ))
 
-        # ~60% of visits include a vaccination if the reason suggests it, else ~15%
         prob = 0.6 if (v.reason and "Vaccin" in v.reason) else 0.15
         if random.random() < prob:
-            # Pick vaccine based on species (we need species; quick lookup in memory)
-            # We'll infer with a bias; later we’ll do proper joins/relationships.
             vaccine_type = random.choice(DOG_VAX + CAT_VAX)
             vax.append(Vaccination(
                 pet_id=v.pet_id,
@@ -225,8 +227,8 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
 
     return (len(visits), len(weights), len(vax))
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     session = SessionLocal()
     try:
         print("Resetting tables...")
@@ -254,5 +256,6 @@ if __name__ == "__main__":
         visit_n, weight_n, vax_n = seed_visits_weights_vax(session, pets, clinics, vet_users)
 
         print(f"Done. visits={visit_n}, weights={weight_n}, vaccinations={vax_n}")
+        print("Generated unique passwords for all users in users.password")
     finally:
         session.close()

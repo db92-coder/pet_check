@@ -23,6 +23,7 @@ class Pet(Base):
     species: Mapped[str] = mapped_column(String, nullable=False)
     breed: Mapped[str] = mapped_column(String, nullable=True)
     sex: Mapped[str] = mapped_column(String, nullable=True)
+    photo_url: Mapped[str] = mapped_column(String, nullable=True)
 
     # Optional Info
     date_of_birth: Mapped[datetime] = mapped_column(Date, nullable=True)

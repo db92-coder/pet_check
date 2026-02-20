@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
 
@@ -10,7 +10,6 @@ from app.api.v1.routes.deps import get_db
 from app.db.models.pet import Pet
 from app.db.models.weight import Weight
 from app.db.models.vaccination import Vaccination
-from sqlalchemy import select, outerjoin
 from app.db.models.owner_pet import OwnerPet
 from app.db.models.owner import Owner
 from app.db.models.user import User
@@ -33,7 +32,13 @@ def _parse_uuid(pet_id: str) -> uuid.UUID:
 # -------------------------
 
 @router.get("", summary="List pets (with owner info)")
-def list_pets(limit: int = 200, offset: int = 0, db: Session = Depends(get_db)):
+def list_pets(
+    limit: int = 200,
+    offset: int = 0,
+    user_id: str | None = Query(default=None),
+    owner_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
     stmt = (
         select(
             Pet.pet_id.label("id"),
@@ -49,17 +54,30 @@ def list_pets(limit: int = 200, offset: int = 0, db: Session = Depends(get_db)):
 
             User.user_id.label("user_id"),
             User.email.label("owner_email"),
-            # if your User has these fields, keep them; otherwise remove:
-            getattr(User, "first_name", None).label("owner_first_name") if hasattr(User, "first_name") else None,
-            getattr(User, "last_name", None).label("owner_last_name") if hasattr(User, "last_name") else None,
+            User.full_name.label("owner_full_name"),
+            User.phone.label("owner_phone"),
         )
         .select_from(Pet)
         .outerjoin(OwnerPet, OwnerPet.pet_id == Pet.pet_id)
         .outerjoin(Owner, Owner.owner_id == OwnerPet.owner_id)
         .outerjoin(User, User.user_id == Owner.user_id)
-        .offset(offset)
-        .limit(limit)
     )
+
+    if user_id:
+        try:
+            uid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user_id (must be UUID)")
+        stmt = stmt.where(User.user_id == uid)
+
+    if owner_id:
+        try:
+            oid = uuid.UUID(owner_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid owner_id (must be UUID)")
+        stmt = stmt.where(Owner.owner_id == oid)
+
+    stmt = stmt.offset(offset).limit(limit)
 
     rows = db.execute(stmt).mappings().all()
 
@@ -72,8 +90,6 @@ def list_pets(limit: int = 200, offset: int = 0, db: Session = Depends(get_db)):
         if d.get("owner_id"): d["owner_id"] = str(d["owner_id"])
         if d.get("user_id"): d["user_id"] = str(d["user_id"])
 
-        # Remove keys where we dynamically inserted None columns
-        d = {k: v for k, v in d.items() if k is not None}
         out.append(d)
 
     return out
@@ -113,30 +129,28 @@ def list_pet_weights(
 ):
     pid = _parse_uuid(pet_id)
 
-    # Adjust column names if your Weight model differs
     stmt = (
         select(
-            Weight.weight_id.label("id") if hasattr(Weight, "weight_id") else Weight.id.label("id"),
+            Weight.weight_id.label("id"),
             Weight.pet_id.label("pet_id"),
-            # common possibilities:
-            getattr(Weight, "weight_kg", None).label("weight_kg") if hasattr(Weight, "weight_kg") else getattr(Weight, "weight", None).label("weight"),
-            getattr(Weight, "measured_on", None).label("measured_on") if hasattr(Weight, "measured_on") else getattr(Weight, "recorded_at", None).label("recorded_at"),
-            getattr(Weight, "created_at", None).label("created_at") if hasattr(Weight, "created_at") else None,
+            Weight.weight_kg.label("weight_kg"),
+            Weight.measured_at.label("measured_at"),
+            Weight.measured_by.label("measured_by"),
         )
         .where(Weight.pet_id == pid)
-        .order_by(desc(getattr(Weight, "measured_on", getattr(Weight, "recorded_at", Weight.pet_id))))
+        .order_by(desc(Weight.measured_at))
         .limit(limit)
     )
 
     rows = db.execute(stmt).mappings().all()
 
-    # Clean up any None keys from the dynamic selection above
     cleaned = []
     for r in rows:
         d = dict(r)
         d["id"] = str(d["id"]) if isinstance(d.get("id"), uuid.UUID) else d.get("id")
         d["pet_id"] = str(d["pet_id"]) if isinstance(d.get("pet_id"), uuid.UUID) else d.get("pet_id")
-        cleaned.append({k: v for k, v in d.items() if k is not None})
+        d["measured_by"] = str(d["measured_by"]) if isinstance(d.get("measured_by"), uuid.UUID) else d.get("measured_by")
+        cleaned.append(d)
     return cleaned
 
 
@@ -148,17 +162,18 @@ def list_pet_vaccinations(
 ):
     pid = _parse_uuid(pet_id)
 
-    # Adjust column names if your Vaccination model differs
     stmt = (
         select(
-            Vaccination.vaccination_id.label("id") if hasattr(Vaccination, "vaccination_id") else Vaccination.id.label("id"),
+            Vaccination.vaccination_id.label("id"),
             Vaccination.pet_id.label("pet_id"),
-            getattr(Vaccination, "vaccine_type", None).label("vaccine_type") if hasattr(Vaccination, "vaccine_type") else getattr(Vaccination, "type", None).label("type"),
-            getattr(Vaccination, "administered_on", None).label("administered_on") if hasattr(Vaccination, "administered_on") else getattr(Vaccination, "date", None).label("date"),
-            getattr(Vaccination, "created_at", None).label("created_at") if hasattr(Vaccination, "created_at") else None,
+            Vaccination.visit_id.label("visit_id"),
+            Vaccination.vaccine_type.label("vaccine_type"),
+            Vaccination.batch_number.label("batch_number"),
+            Vaccination.administered_at.label("administered_at"),
+            Vaccination.due_at.label("due_at"),
         )
         .where(Vaccination.pet_id == pid)
-        .order_by(desc(getattr(Vaccination, "administered_on", getattr(Vaccination, "date", Vaccination.pet_id))))
+        .order_by(desc(Vaccination.administered_at))
         .limit(limit)
     )
 
@@ -169,5 +184,6 @@ def list_pet_vaccinations(
         d = dict(r)
         d["id"] = str(d["id"]) if isinstance(d.get("id"), uuid.UUID) else d.get("id")
         d["pet_id"] = str(d["pet_id"]) if isinstance(d.get("pet_id"), uuid.UUID) else d.get("pet_id")
-        cleaned.append({k: v for k, v in d.items() if k is not None})
+        d["visit_id"] = str(d["visit_id"]) if isinstance(d.get("visit_id"), uuid.UUID) else d.get("visit_id")
+        cleaned.append(d)
     return cleaned
