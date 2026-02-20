@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Date, DateTime
+from sqlalchemy import String, Date, DateTime, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +24,8 @@ class Pet(Base):
     breed: Mapped[str] = mapped_column(String, nullable=True)
     sex: Mapped[str] = mapped_column(String, nullable=True)
     photo_url: Mapped[str] = mapped_column(String, nullable=True)
+    photo_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    photo_mime_type: Mapped[str] = mapped_column(String, nullable=True)
 
     # Optional Info
     date_of_birth: Mapped[datetime] = mapped_column(Date, nullable=True)

@@ -1,30 +1,57 @@
 from __future__ import annotations
 
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import date
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc
 
 from app.api.v1.routes.deps import get_db
-
-from app.db.models.pet import Pet
-from app.db.models.weight import Weight
-from app.db.models.vaccination import Vaccination
-from app.db.models.owner_pet import OwnerPet
 from app.db.models.owner import Owner
+from app.db.models.owner_pet import OwnerPet
+from app.db.models.pet import Pet
 from app.db.models.user import User
+from app.db.models.vaccination import Vaccination
+from app.db.models.weight import Weight
 
 router = APIRouter()
+
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png"}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 # -------------------------
 # Helpers
 # -------------------------
-def _parse_uuid(pet_id: str) -> uuid.UUID:
+def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
     try:
-        return uuid.UUID(pet_id)
+        return uuid.UUID(value)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pet_id (must be UUID)")
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name} (must be UUID)")
+
+
+def _normalize_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned if cleaned else None
+
+
+async def _read_image_file(photo: UploadFile | None) -> tuple[bytes | None, str | None]:
+    if not photo:
+        return None, None
+
+    content_type = (photo.content_type or "").lower()
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Photo must be JPEG or PNG")
+
+    data = await photo.read()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Photo must be 5MB or smaller")
+
+    return data, content_type
 
 
 # -------------------------
@@ -46,6 +73,8 @@ def list_pets(
             Pet.species.label("species"),
             Pet.breed.label("breed"),
             Pet.sex.label("sex"),
+            Pet.photo_url.label("photo_url"),
+            Pet.photo_mime_type.label("photo_mime_type"),
             Pet.date_of_birth.label("date_of_birth"),
             Pet.created_at.label("created_at"),
 
@@ -64,17 +93,11 @@ def list_pets(
     )
 
     if user_id:
-        try:
-            uid = uuid.UUID(user_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid user_id (must be UUID)")
+        uid = _parse_uuid(user_id, "user_id")
         stmt = stmt.where(User.user_id == uid)
 
     if owner_id:
-        try:
-            oid = uuid.UUID(owner_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid owner_id (must be UUID)")
+        oid = _parse_uuid(owner_id, "owner_id")
         stmt = stmt.where(Owner.owner_id == oid)
 
     stmt = stmt.offset(offset).limit(limit)
@@ -84,16 +107,131 @@ def list_pets(
     out = []
     for r in rows:
         d = dict(r)
+        if d.get("id"):
+            d["id"] = str(d["id"])
+        if d.get("owner_id"):
+            d["owner_id"] = str(d["owner_id"])
+        if d.get("user_id"):
+            d["user_id"] = str(d["user_id"])
 
-        # UUIDs -> strings for frontend
-        if d.get("id"): d["id"] = str(d["id"])
-        if d.get("owner_id"): d["owner_id"] = str(d["owner_id"])
-        if d.get("user_id"): d["user_id"] = str(d["user_id"])
-
+        d["has_photo"] = bool(d.get("photo_mime_type"))
         out.append(d)
 
     return out
 
+
+@router.post("", summary="Create pet for an owner user")
+async def create_pet(
+    user_id: str = Form(...),
+    name: str = Form(...),
+    species: str = Form(...),
+    breed: str | None = Form(default=None),
+    sex: str | None = Form(default=None),
+    date_of_birth: date | None = Form(default=None),
+    photo: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db),
+):
+    uid = _parse_uuid(user_id, "user_id")
+
+    owner = db.execute(select(Owner).where(Owner.user_id == uid)).scalar_one_or_none()
+    if not owner:
+        raise HTTPException(status_code=404, detail="Owner profile not found for user")
+
+    photo_data, photo_mime_type = await _read_image_file(photo)
+
+    pet = Pet(
+        name=name.strip(),
+        species=species.strip(),
+        breed=_normalize_optional(breed),
+        sex=_normalize_optional(sex),
+        date_of_birth=date_of_birth,
+        photo_data=photo_data,
+        photo_mime_type=photo_mime_type,
+        photo_url=None,
+    )
+    db.add(pet)
+    db.flush()
+
+    db.add(
+        OwnerPet(
+            owner_id=owner.owner_id,
+            pet_id=pet.pet_id,
+            start_date=date.today(),
+            end_date=None,
+            relationship_type="primary_owner",
+        )
+    )
+
+    db.commit()
+    db.refresh(pet)
+
+    return {
+        "id": str(pet.pet_id),
+        "owner_id": str(owner.owner_id),
+        "user_id": str(uid),
+        "name": pet.name,
+        "species": pet.species,
+        "breed": pet.breed,
+        "sex": pet.sex,
+        "date_of_birth": pet.date_of_birth,
+        "has_photo": bool(pet.photo_mime_type),
+    }
+
+
+@router.put("/{pet_id}", summary="Update pet details")
+async def update_pet(
+    pet_id: str,
+    name: str = Form(...),
+    species: str = Form(...),
+    breed: str | None = Form(default=None),
+    sex: str | None = Form(default=None),
+    date_of_birth: date | None = Form(default=None),
+    photo: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db),
+):
+    pid = _parse_uuid(pet_id, "pet_id")
+
+    pet = db.execute(select(Pet).where(Pet.pet_id == pid)).scalar_one_or_none()
+    if not pet:
+        raise HTTPException(status_code=404, detail="Pet not found")
+
+    pet.name = name.strip()
+    pet.species = species.strip()
+    pet.breed = _normalize_optional(breed)
+    pet.sex = _normalize_optional(sex)
+    pet.date_of_birth = date_of_birth
+
+    if photo:
+        photo_data, photo_mime_type = await _read_image_file(photo)
+        pet.photo_data = photo_data
+        pet.photo_mime_type = photo_mime_type
+        pet.photo_url = None
+
+    db.commit()
+    db.refresh(pet)
+
+    return {
+        "id": str(pet.pet_id),
+        "name": pet.name,
+        "species": pet.species,
+        "breed": pet.breed,
+        "sex": pet.sex,
+        "date_of_birth": pet.date_of_birth,
+        "has_photo": bool(pet.photo_mime_type),
+    }
+
+
+@router.get("/{pet_id}/photo", summary="Get pet photo")
+def get_pet_photo(
+    pet_id: str,
+    db: Session = Depends(get_db),
+):
+    pid = _parse_uuid(pet_id, "pet_id")
+    pet = db.execute(select(Pet).where(Pet.pet_id == pid)).scalar_one_or_none()
+    if not pet or not pet.photo_data:
+        raise HTTPException(status_code=404, detail="Pet photo not found")
+
+    return Response(content=pet.photo_data, media_type=pet.photo_mime_type or "image/jpeg")
 
 
 @router.get("/{pet_id}", summary="Get pet detail")
@@ -101,7 +239,7 @@ def get_pet(
     pet_id: str,
     db: Session = Depends(get_db),
 ):
-    pid = _parse_uuid(pet_id)
+    pid = _parse_uuid(pet_id, "pet_id")
 
     stmt = select(Pet).where(Pet.pet_id == pid)
     pet = db.execute(stmt).scalars().first()
@@ -109,13 +247,14 @@ def get_pet(
     if not pet:
         raise HTTPException(status_code=404, detail="Pet not found")
 
-    # return a JSON-friendly dict (avoid ORM serialization issues)
     return {
         "id": str(pet.pet_id),
         "name": pet.name,
         "species": pet.species,
         "breed": pet.breed,
         "sex": pet.sex,
+        "photo_url": pet.photo_url,
+        "has_photo": bool(pet.photo_mime_type),
         "date_of_birth": pet.date_of_birth,
         "created_at": pet.created_at,
     }
@@ -127,7 +266,7 @@ def list_pet_weights(
     limit: int = 200,
     db: Session = Depends(get_db),
 ):
-    pid = _parse_uuid(pet_id)
+    pid = _parse_uuid(pet_id, "pet_id")
 
     stmt = (
         select(
@@ -160,7 +299,7 @@ def list_pet_vaccinations(
     limit: int = 200,
     db: Session = Depends(get_db),
 ):
-    pid = _parse_uuid(pet_id)
+    pid = _parse_uuid(pet_id, "pet_id")
 
     stmt = (
         select(

@@ -98,3 +98,19 @@ with engine.begin() as conn:
             """
         )
     )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE pets
+            ADD COLUMN IF NOT EXISTS photo_data BYTEA;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE pets
+            ADD COLUMN IF NOT EXISTS photo_mime_type VARCHAR;
+            """
+        )
+    )

@@ -1,16 +1,24 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Avatar,
   Box,
+  Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Grid,
   List,
   ListItem,
+  ListItemAvatar,
   ListItemText,
   Paper,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 
@@ -31,10 +39,20 @@ function formatDate(value) {
   return d.toLocaleDateString();
 }
 
+const emptyPetForm = {
+  name: "",
+  species: "",
+  breed: "",
+  sex: "",
+  date_of_birth: "",
+  photo: null,
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
+  const [savingPet, setSavingPet] = useState(false);
   const [error, setError] = useState("");
 
   const [pets, setPets] = useState([]);
@@ -42,81 +60,84 @@ export default function Dashboard() {
   const [vaccinationDue, setVaccinationDue] = useState([]);
   const [ownerNotResolved, setOwnerNotResolved] = useState(false);
 
+  const [petDialogOpen, setPetDialogOpen] = useState(false);
+  const [editingPetId, setEditingPetId] = useState(null);
+  const [petForm, setPetForm] = useState(emptyPetForm);
+
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [petsRes, visitsRes] = await Promise.all([
+        api.get("/pets", { params: { user_id: user?.user_id, limit: 1000 } }),
+        api.get("/visits", { params: { limit: 5000 } }),
+      ]);
+
+      const currentPets = Array.isArray(petsRes.data) ? petsRes.data : [];
+      const allVisits = Array.isArray(visitsRes.data) ? visitsRes.data : [];
+
+      const resolvedOwnerId = currentPets.length > 0 ? currentPets[0].owner_id : null;
+      setOwnerNotResolved(user?.role === "OWNER" && Boolean(user?.user_id) && !resolvedOwnerId);
+      setPets(currentPets);
+
+      const petIdSet = new Set(currentPets.map((p) => String(p.id)));
+      const now = new Date();
+
+      const upcoming = allVisits
+        .filter((v) => petIdSet.has(String(v.pet_id)))
+        .filter((v) => {
+          const dt = new Date(v.visit_datetime);
+          return !Number.isNaN(dt.getTime()) && dt >= now;
+        })
+        .sort((a, b) => new Date(a.visit_datetime) - new Date(b.visit_datetime))
+        .slice(0, 12);
+
+      setAppointments(upcoming);
+
+      const vaccinationRows = (
+        await Promise.all(
+          currentPets.map(async (pet) => {
+            try {
+              const res = await api.get(`/pets/${pet.id}/vaccinations`, { params: { limit: 200 } });
+              const rows = Array.isArray(res.data) ? res.data : [];
+              return rows.map((row) => ({ ...row, pet_name: pet.name, pet_id: pet.id }));
+            } catch {
+              return [];
+            }
+          })
+        )
+      ).flat();
+
+      const due = vaccinationRows
+        .filter((v) => v.due_at)
+        .filter((v) => {
+          const dueAt = new Date(v.due_at);
+          return !Number.isNaN(dueAt.getTime()) && dueAt >= now;
+        })
+        .sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
+        .slice(0, 20);
+
+      setVaccinationDue(due);
+    } catch (e) {
+      console.error("Dashboard load failed", e);
+      setError("Failed to load dashboard data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.role, user?.user_id]);
+
   useEffect(() => {
     let cancelled = false;
-
-    async function loadDashboard() {
-      setLoading(true);
-      setError("");
-
-      try {
-        const [petsRes, visitsRes] = await Promise.all([
-          api.get("/pets", { params: { user_id: user?.user_id, limit: 1000 } }),
-          api.get("/visits", { params: { limit: 5000 } }),
-        ]);
-
-        if (cancelled) return;
-
-        const currentPets = Array.isArray(petsRes.data) ? petsRes.data : [];
-        const allVisits = Array.isArray(visitsRes.data) ? visitsRes.data : [];
-
-        const resolvedOwnerId = currentPets.length > 0 ? currentPets[0].owner_id : null;
-        setOwnerNotResolved(Boolean(user?.user_id) && !resolvedOwnerId);
-        setPets(currentPets);
-
-        const petIdSet = new Set(currentPets.map((p) => String(p.id)));
-        const now = new Date();
-
-        const upcoming = allVisits
-          .filter((v) => petIdSet.has(String(v.pet_id)))
-          .filter((v) => {
-            const dt = new Date(v.visit_datetime);
-            return !Number.isNaN(dt.getTime()) && dt >= now;
-          })
-          .sort((a, b) => new Date(a.visit_datetime) - new Date(b.visit_datetime))
-          .slice(0, 12);
-
-        setAppointments(upcoming);
-
-        const vaccinationRows = (
-          await Promise.all(
-            currentPets.map(async (pet) => {
-              try {
-                const res = await api.get(`/pets/${pet.id}/vaccinations`, { params: { limit: 200 } });
-                const rows = Array.isArray(res.data) ? res.data : [];
-                return rows.map((row) => ({ ...row, pet_name: pet.name, pet_id: pet.id }));
-              } catch {
-                return [];
-              }
-            })
-          )
-        ).flat();
-
-        const due = vaccinationRows
-          .filter((v) => v.due_at)
-          .filter((v) => {
-            const dueAt = new Date(v.due_at);
-            return !Number.isNaN(dueAt.getTime()) && dueAt >= now;
-          })
-          .sort((a, b) => new Date(a.due_at) - new Date(b.due_at))
-          .slice(0, 20);
-
-        if (cancelled) return;
-        setVaccinationDue(due);
-      } catch (e) {
-        if (cancelled) return;
-        console.error("Dashboard load failed", e);
-        setError("Failed to load dashboard data.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    async function run() {
+      if (cancelled) return;
+      await loadDashboard();
     }
-
-    loadDashboard();
+    run();
     return () => {
       cancelled = true;
     };
-  }, [user?.user_id]);
+  }, [loadDashboard]);
 
   const personalInfo = useMemo(() => {
     const firstPet = pets[0] || {};
@@ -135,6 +156,68 @@ export default function Dashboard() {
     }
     return map;
   }, [pets]);
+
+  function openAddPetDialog() {
+    setEditingPetId(null);
+    setPetForm(emptyPetForm);
+    setPetDialogOpen(true);
+  }
+
+  function openEditPetDialog(pet) {
+    setEditingPetId(pet.id);
+    setPetForm({
+      name: pet.name || "",
+      species: pet.species || "",
+      breed: pet.breed || "",
+      sex: pet.sex || "",
+      date_of_birth: pet.date_of_birth ? String(pet.date_of_birth).slice(0, 10) : "",
+      photo: null,
+    });
+    setPetDialogOpen(true);
+  }
+
+  function closePetDialog() {
+    if (savingPet) return;
+    setPetDialogOpen(false);
+  }
+
+  async function submitPetForm(e) {
+    e.preventDefault();
+    setSavingPet(true);
+    setError("");
+
+    try {
+      const fd = new FormData();
+      fd.append("name", petForm.name);
+      fd.append("species", petForm.species);
+      fd.append("breed", petForm.breed || "");
+      fd.append("sex", petForm.sex || "");
+      fd.append("date_of_birth", petForm.date_of_birth || "");
+      if (petForm.photo) {
+        fd.append("photo", petForm.photo);
+      }
+
+      if (editingPetId) {
+        await api.put(`/pets/${editingPetId}`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      } else {
+        fd.append("user_id", user.user_id);
+        await api.post("/pets", fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+
+      setPetDialogOpen(false);
+      setPetForm(emptyPetForm);
+      await loadDashboard();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "Failed to save pet.");
+    } finally {
+      setSavingPet(false);
+    }
+  }
 
   return (
     <Stack spacing={2}>
@@ -189,20 +272,35 @@ export default function Dashboard() {
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, lg: 5 }}>
               <Paper sx={{ p: 2, height: "100%" }}>
-                <Typography variant="h6" fontWeight={700}>Current Pets</Typography>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="h6" fontWeight={700}>Current Pets</Typography>
+                  {user?.role === "OWNER" && (
+                    <Button variant="contained" size="small" onClick={openAddPetDialog}>Add Pet</Button>
+                  )}
+                </Stack>
                 <Divider sx={{ my: 1.5 }} />
                 {pets.length === 0 ? (
                   <Typography sx={{ opacity: 0.75 }}>No pets found.</Typography>
                 ) : (
                   <List dense>
-                    {pets.map((pet) => (
-                      <ListItem key={pet.id} disableGutters>
-                        <ListItemText
-                          primary={`${pet.name || "Unnamed"} (${pet.species || "Unknown"})`}
-                          secondary={`Breed: ${pet.breed || "-"} | Sex: ${pet.sex || "-"} | DOB: ${formatDate(pet.date_of_birth)}`}
-                        />
-                      </ListItem>
-                    ))}
+                    {pets.map((pet) => {
+                      const photoSrc = pet.has_photo ? `${api.defaults.baseURL}/pets/${pet.id}/photo` : null;
+                      return (
+                        <ListItem key={pet.id} disableGutters secondaryAction={
+                          user?.role === "OWNER" ? (
+                            <Button size="small" onClick={() => openEditPetDialog(pet)}>Edit</Button>
+                          ) : null
+                        }>
+                          <ListItemAvatar>
+                            <Avatar src={photoSrc || undefined} alt={pet.name || "Pet"} />
+                          </ListItemAvatar>
+                          <ListItemText
+                            primary={`${pet.name || "Unnamed"} (${pet.species || "Unknown"})`}
+                            secondary={`Breed: ${pet.breed || "-"} | Sex: ${pet.sex || "-"} | DOB: ${formatDate(pet.date_of_birth)}`}
+                          />
+                        </ListItem>
+                      );
+                    })}
                   </List>
                 )}
               </Paper>
@@ -253,6 +351,58 @@ export default function Dashboard() {
           </Grid>
         </>
       )}
+
+      <Dialog open={petDialogOpen} onClose={closePetDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingPetId ? "Edit Pet" : "Add Pet"}</DialogTitle>
+        <Box component="form" onSubmit={submitPetForm}>
+          <DialogContent sx={{ display: "grid", gap: 2 }}>
+            <TextField
+              label="Pet Name"
+              value={petForm.name}
+              onChange={(e) => setPetForm((p) => ({ ...p, name: e.target.value }))}
+              required
+            />
+            <TextField
+              label="Species"
+              value={petForm.species}
+              onChange={(e) => setPetForm((p) => ({ ...p, species: e.target.value }))}
+              required
+            />
+            <TextField
+              label="Breed"
+              value={petForm.breed}
+              onChange={(e) => setPetForm((p) => ({ ...p, breed: e.target.value }))}
+            />
+            <TextField
+              label="Sex"
+              value={petForm.sex}
+              onChange={(e) => setPetForm((p) => ({ ...p, sex: e.target.value }))}
+            />
+            <TextField
+              label="DOB"
+              type="date"
+              value={petForm.date_of_birth}
+              onChange={(e) => setPetForm((p) => ({ ...p, date_of_birth: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+            />
+            <Button variant="outlined" component="label">
+              {petForm.photo ? `Selected: ${petForm.photo.name}` : "Upload Photo (JPEG/PNG)"}
+              <input
+                hidden
+                type="file"
+                accept="image/png,image/jpeg"
+                onChange={(e) => setPetForm((p) => ({ ...p, photo: e.target.files?.[0] || null }))}
+              />
+            </Button>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closePetDialog} disabled={savingPet}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={savingPet}>
+              {savingPet ? "Saving..." : "Save"}
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
     </Stack>
   );
 }

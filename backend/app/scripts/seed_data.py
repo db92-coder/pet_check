@@ -1,6 +1,8 @@
 from faker import Faker
 import random
 import string
+import csv
+from pathlib import Path
 from datetime import datetime, UTC, timedelta
 from sqlalchemy import text
 
@@ -27,6 +29,32 @@ def generate_password(length: int = 12) -> str:
     return "".join(random.choice(chars) for _ in range(length))
 
 
+def generate_au_mobile() -> str:
+    # Australian mobile format: 04 + 8 digits
+    return "04" + "".join(random.choice(string.digits) for _ in range(8))
+
+
+def ensure_user_auth_columns(session) -> None:
+    # Ensure expected auth columns exist even on older DB schemas.
+    session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password VARCHAR;"))
+    session.execute(text("UPDATE users SET password = 'password123' WHERE password IS NULL;"))
+    session.execute(text("ALTER TABLE users ALTER COLUMN password SET NOT NULL;"))
+    session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR;"))
+    session.execute(text("UPDATE users SET role = 'OWNER' WHERE role IS NULL;"))
+    session.execute(text("ALTER TABLE users ALTER COLUMN role SET NOT NULL;"))
+    session.commit()
+
+
+def export_credentials(users: list[User]) -> Path:
+    out_path = Path(__file__).resolve().parent / "seeded_user_credentials.csv"
+    with out_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["user_id", "email", "password", "role"])
+        for user in users:
+            writer.writerow([str(user.user_id), user.email, user.password, user.role])
+    return out_path
+
+
 def reset_db(session) -> None:
     session.execute(text("""
         TRUNCATE TABLE
@@ -47,11 +75,17 @@ def reset_db(session) -> None:
 def seed_users(session, n: int = 200) -> list[User]:
     users: list[User] = []
     for _ in range(n):
+        role = random.choices(
+            population=["OWNER", "VET", "ADMIN"],
+            weights=[0.6, 0.25, 0.15],
+            k=1,
+        )[0]
         users.append(User(
             email=fake.unique.email(),
             password=generate_password(),
+            role=role,
             full_name=fake.name(),
-            phone=fake.phone_number()
+            phone=generate_au_mobile(),
         ))
     session.add_all(users)
     session.commit()
@@ -61,6 +95,8 @@ def seed_users(session, n: int = 200) -> list[User]:
 def seed_owners(session, users: list[User]) -> list[Owner]:
     owners: list[Owner] = []
     for u in users:
+        if (u.role or "").upper() != "OWNER":
+            continue
         owners.append(Owner(
             user_id=u.user_id,
             verified_identity_level=random.choice([0, 1, 2])
@@ -154,7 +190,11 @@ def seed_clinics(session, n: int = 5) -> list[Organisation]:
 
 
 def seed_vet_staff(session, users: list[User], clinics: list[Organisation], n_vets: int = 25) -> list[User]:
-    vet_users = random.sample(users, k=min(n_vets, len(users)))
+    eligible = [u for u in users if (u.role or "").upper() == "VET"]
+    if not eligible:
+        return []
+
+    vet_users = random.sample(eligible, k=min(n_vets, len(eligible)))
     members: list[OrganisationMember] = []
 
     for u in vet_users:
@@ -231,11 +271,15 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
 if __name__ == "__main__":
     session = SessionLocal()
     try:
+        print("Ensuring users auth columns...")
+        ensure_user_auth_columns(session)
+
         print("Resetting tables...")
         reset_db(session)
 
         print("Seeding users (200)...")
         users = seed_users(session, 200)
+        creds_path = export_credentials(users)
 
         print("Seeding owners (200)...")
         owners = seed_owners(session, users)
@@ -257,5 +301,6 @@ if __name__ == "__main__":
 
         print(f"Done. visits={visit_n}, weights={weight_n}, vaccinations={vax_n}")
         print("Generated unique passwords for all users in users.password")
+        print(f"Credentials export: {creds_path}")
     finally:
         session.close()

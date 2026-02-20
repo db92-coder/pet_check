@@ -52,6 +52,26 @@ export function AuthProvider({ children }) {
     setUser(me);
   }
 
+  async function registerOwner(payload) {
+    const formData = new FormData();
+    formData.append("email", payload.email);
+    formData.append("password", payload.password);
+    formData.append("full_name", payload.full_name);
+    formData.append("phone", payload.phone || "");
+    formData.append("pet_name", payload.pet_name);
+    formData.append("pet_species", payload.pet_species);
+    formData.append("pet_breed", payload.pet_breed || "");
+    formData.append("pet_sex", payload.pet_sex || "");
+    formData.append("pet_date_of_birth", payload.pet_date_of_birth || "");
+    if (payload.pet_photo_file) {
+      formData.append("photo", payload.pet_photo_file);
+    }
+
+    await api.post("/auth/register-owner", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  }
+
   function logout() {
     localStorage.removeItem("access_token");
     localStorage.removeItem("auth_user");
@@ -64,7 +84,7 @@ export function AuthProvider({ children }) {
   }
 
   const value = useMemo(
-    () => ({ user, token, isAuthed, login, logout, hasRole, setUser }),
+    () => ({ user, token, isAuthed, login, registerOwner, logout, hasRole, setUser }),
     [user, token, isAuthed]
   );
 

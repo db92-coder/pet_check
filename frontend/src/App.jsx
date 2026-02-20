@@ -20,17 +20,17 @@ export default function App() {
         <Route element={<AdminLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/pets" element={<Pets />} />
-          <Route path="/visits" element={<Placeholder title="Visits" />} />
 
           <Route element={<RequireRole roles={["ADMIN", "VET"]} />}>
+            <Route path="/pets" element={<Pets />} />
+            <Route path="/visits" element={<Placeholder title="Visits" />} />
             <Route path="/owners" element={<Placeholder title="Owners" />} />
-          </Route>
-
-          <Route element={<RequireRole roles={["ADMIN"]} />}>
             <Route path="/clinics" element={<Placeholder title="Clinics" />} />
             <Route path="/staff" element={<Placeholder title="Staff" />} />
             <Route path="/users" element={<Placeholder title="Users" />} />
+          </Route>
+
+          <Route element={<RequireRole roles={["ADMIN"]} />}>
             <Route path="/admin/analytics" element={<AdminAnalytics />} />
           </Route>
         </Route>

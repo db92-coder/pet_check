@@ -3,7 +3,7 @@ from datetime import date
 from secrets import token_urlsafe
 from typing import Dict, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -18,6 +18,8 @@ router = APIRouter()
 
 TOKENS: Dict[str, str] = {}
 VALID_ROLES = {"ADMIN", "VET", "OWNER"}
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png"}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 class LoginRequest(BaseModel):
@@ -30,6 +32,7 @@ class PetCreatePayload(BaseModel):
     species: str
     breed: str | None = None
     sex: str | None = None
+    date_of_birth: date | None = None
     photo_url: str | None = None
 
 
@@ -82,6 +85,21 @@ def _get_token_value(authorization: str | None) -> str:
     return parts[1].strip()
 
 
+async def _read_image_file(photo: UploadFile | None) -> tuple[bytes | None, str | None]:
+    if not photo:
+        return None, None
+
+    content_type = (photo.content_type or "").lower()
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Photo must be JPEG or PNG")
+
+    data = await photo.read()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Photo must be 5MB or smaller")
+
+    return data, content_type
+
+
 @router.post("/register", response_model=UserPayload)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     normalized_email = _normalize_email(payload.email)
@@ -117,6 +135,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
             species=payload.pet.species,
             breed=payload.pet.breed,
             sex=payload.pet.sex,
+            date_of_birth=payload.pet.date_of_birth,
             photo_url=payload.pet.photo_url,
         )
         db.add(pet)
@@ -131,6 +150,70 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
                 relationship_type="primary_owner",
             )
         )
+
+    db.commit()
+    db.refresh(user)
+    return _as_user_payload(user)
+
+
+@router.post("/register-owner", response_model=UserPayload)
+async def register_owner(
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(...),
+    phone: str | None = Form(default=None),
+    pet_name: str = Form(...),
+    pet_species: str = Form(...),
+    pet_breed: str | None = Form(default=None),
+    pet_sex: str | None = Form(default=None),
+    pet_date_of_birth: date | None = Form(default=None),
+    photo: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db),
+):
+    normalized_email = _normalize_email(email)
+
+    exists = db.execute(select(User.user_id).where(func.lower(User.email) == normalized_email)).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    user = User(
+        email=normalized_email,
+        password=password,
+        role="OWNER",
+        full_name=full_name,
+        phone=phone,
+    )
+    db.add(user)
+    db.flush()
+
+    owner = Owner(user_id=user.user_id, verified_identity_level=0)
+    db.add(owner)
+    db.flush()
+
+    photo_data, photo_mime_type = await _read_image_file(photo)
+
+    pet = Pet(
+        name=pet_name.strip(),
+        species=pet_species.strip(),
+        breed=pet_breed.strip() if pet_breed and pet_breed.strip() else None,
+        sex=pet_sex.strip() if pet_sex and pet_sex.strip() else None,
+        date_of_birth=pet_date_of_birth,
+        photo_data=photo_data,
+        photo_mime_type=photo_mime_type,
+        photo_url=None,
+    )
+    db.add(pet)
+    db.flush()
+
+    db.add(
+        OwnerPet(
+            owner_id=owner.owner_id,
+            pet_id=pet.pet_id,
+            start_date=date.today(),
+            end_date=None,
+            relationship_type="primary_owner",
+        )
+    )
 
     db.commit()
     db.refresh(user)

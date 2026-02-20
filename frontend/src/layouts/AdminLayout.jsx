@@ -26,7 +26,7 @@ import BadgeIcon from "@mui/icons-material/Badge";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import InsightsIcon from "@mui/icons-material/Insights";
 
-import { useTheme } from "@mui/material/styles"; 
+import { useTheme } from "@mui/material/styles";
 
 import { useAuth } from "../auth/AuthContext.jsx";
 
@@ -35,23 +35,22 @@ const drawerWidth = 260;
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const role = user?.role || "OWNER";
-  const name = user?.username || user?.name || "User";
+  const name = user?.full_name || user?.name || user?.username || "User";
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const nav = useNavigate();
   const theme = useTheme();
 
-
   const navItems = useMemo(
     () => [
       { label: "Dashboard", path: "/dashboard", icon: <DashboardIcon />, roles: ["ADMIN", "VET", "OWNER"] },
-      { label: "Pets", path: "/pets", icon: <PetsIcon />, roles: ["ADMIN", "VET", "OWNER"] },
-      { label: "Visits", path: "/visits", icon: <EventNoteIcon />, roles: ["ADMIN", "VET", "OWNER"] },
+      { label: "Pets", path: "/pets", icon: <PetsIcon />, roles: ["ADMIN", "VET"] },
+      { label: "Visits", path: "/visits", icon: <EventNoteIcon />, roles: ["ADMIN", "VET"] },
       { label: "Owners", path: "/owners", icon: <PeopleIcon />, roles: ["ADMIN", "VET"] },
-      { label: "Clinics", path: "/clinics", icon: <LocalHospitalIcon />, roles: ["ADMIN"] },
-      { label: "Staff", path: "/staff", icon: <BadgeIcon />, roles: ["ADMIN"] },
-      { label: "Users", path: "/users", icon: <AdminPanelSettingsIcon />, roles: ["ADMIN"] },
+      { label: "Clinics", path: "/clinics", icon: <LocalHospitalIcon />, roles: ["ADMIN", "VET"] },
+      { label: "Staff", path: "/staff", icon: <BadgeIcon />, roles: ["ADMIN", "VET"] },
+      { label: "Users", path: "/users", icon: <AdminPanelSettingsIcon />, roles: ["ADMIN", "VET"] },
       { label: "Analytics", path: "/admin/analytics", icon: <InsightsIcon />, roles: ["ADMIN"] },
     ],
     []
@@ -60,41 +59,39 @@ export default function AdminLayout() {
   const allowed = navItems.filter((i) => i.roles.includes(role));
 
   const drawerContent = (
-  <Box sx={{ height: "100%" }}>
-    {/* Spacer so the drawer content starts below the fixed AppBar */}
-    <Box sx={theme.mixins.toolbar} />
+    <Box sx={{ height: "100%" }}>
+      <Box sx={theme.mixins.toolbar} />
 
-    <Box sx={{ px: 2, pb: 2 }}>
-      <Typography variant="h6" fontWeight={800}>Pet Check</Typography>
-      <Typography variant="body2" sx={{ opacity: 0.8 }}>
-        {name} • {role}
-      </Typography>
+      <Box sx={{ px: 2, pb: 2 }}>
+        <Typography variant="h6" fontWeight={800}>Pet Check</Typography>
+        <Typography variant="body2" sx={{ opacity: 0.8 }}>
+          {name} - {role}
+        </Typography>
+      </Box>
+
+      <Divider />
+
+      <List sx={{ px: 1, pt: 1 }}>
+        {allowed.map((item) => {
+          const selected = location.pathname === item.path;
+          return (
+            <ListItemButton
+              key={item.path}
+              selected={selected}
+              onClick={() => {
+                nav(item.path);
+                setMobileOpen(false);
+              }}
+              sx={{ borderRadius: 2, mx: 1, mb: 0.5 }}
+            >
+              <ListItemIcon>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.label} />
+            </ListItemButton>
+          );
+        })}
+      </List>
     </Box>
-
-    <Divider />
-
-    <List sx={{ px: 1, pt: 1 }}>
-      {allowed.map((item) => {
-        const selected = location.pathname === item.path;
-        return (
-          <ListItemButton
-            key={item.path}
-            selected={selected}
-            onClick={() => {
-              nav(item.path);
-              setMobileOpen(false);
-            }}
-            sx={{ borderRadius: 2, mx: 1, mb: 0.5 }}
-          >
-            <ListItemIcon>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.label} />
-          </ListItemButton>
-        );
-      })}
-    </List>
-  </Box>
-);
-
+  );
 
   return (
     <Box sx={{ display: "flex" }}>
@@ -127,7 +124,6 @@ export default function AdminLayout() {
         </Toolbar>
       </AppBar>
 
-      {/* Desktop drawer */}
       <Drawer
         variant="permanent"
         sx={{
@@ -141,7 +137,6 @@ export default function AdminLayout() {
         {drawerContent}
       </Drawer>
 
-      {/* Mobile drawer */}
       <Drawer
         variant="temporary"
         open={mobileOpen}
@@ -154,7 +149,6 @@ export default function AdminLayout() {
         {drawerContent}
       </Drawer>
 
-      {/* Main content */}
       <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
         <Toolbar />
         <Outlet />
