@@ -7,6 +7,7 @@ import {
   Stack,
   Typography,
   TextField,
+  MenuItem,
   Button,
   Divider,
 } from "@mui/material";
@@ -33,15 +34,70 @@ function toFiniteNumber(value, fallback = 0) {
 export default function AdminAnalytics() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [month, setMonth] = useState("");
   const [organisationId, setOrganisationId] = useState("");
+  const [vaccineType, setVaccineType] = useState("");
+  const [visitReason, setVisitReason] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+
+  const [filterOptions, setFilterOptions] = useState({
+    organisations: [],
+    months: [],
+    vaccine_types: [],
+    visit_reasons: [],
+  });
 
   const [careEventsByMonth, setCareEventsByMonth] = useState([]);
   const [vaccinationsByType, setVaccinationsByType] = useState([]);
   const [topOrgsByVisits, setTopOrgsByVisits] = useState([]);
   const [visitsByReason, setVisitsByReason] = useState([]);
+
+  const buildParams = () => {
+    const params = {};
+    if (start) params.start = start;
+    if (end) params.end = end;
+    if (month) params.month = month;
+    if (organisationId) params.organisation_id = organisationId;
+    if (vaccineType) params.vaccine_type = vaccineType;
+    if (visitReason) params.visit_reason = visitReason;
+    return params;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFilterOptions() {
+      try {
+        const params = {};
+        if (start) params.start = start;
+        if (end) params.end = end;
+        if (month) params.month = month;
+        if (organisationId) params.organisation_id = organisationId;
+
+        const res = await api.get("/analytics/filter-options", { params });
+        if (cancelled) return;
+
+        const options = {
+          organisations: Array.isArray(res.data?.organisations) ? res.data.organisations : [],
+          months: Array.isArray(res.data?.months) ? res.data.months : [],
+          vaccine_types: Array.isArray(res.data?.vaccine_types) ? res.data.vaccine_types : [],
+          visit_reasons: Array.isArray(res.data?.visit_reasons) ? res.data.visit_reasons : [],
+        };
+        setFilterOptions(options);
+      } catch (e) {
+        if (cancelled) return;
+        console.error("Analytics filter options fetch failed:", e);
+      }
+    }
+
+    loadFilterOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [start, end, month, organisationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,10 +106,7 @@ export default function AdminAnalytics() {
       setLoading(true);
       setError("");
 
-      const params = {};
-      if (start) params.start = start;
-      if (end) params.end = end;
-      if (organisationId) params.organisation_id = organisationId;
+      const params = buildParams();
 
       try {
         const [careRes, vaxRes, topRes, reasonsRes] = await Promise.all([
@@ -82,7 +135,36 @@ export default function AdminAnalytics() {
     return () => {
       cancelled = true;
     };
-  }, [start, end, organisationId]);
+  }, [start, end, month, organisationId, vaccineType, visitReason]);
+
+  async function handleExport() {
+    setExporting(true);
+    setError("");
+    try {
+      const res = await api.get("/analytics/export", {
+        params: buildParams(),
+        responseType: "blob",
+      });
+      const disposition = res.headers?.["content-disposition"] || "";
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || "analytics_export.csv";
+
+      const blob = new Blob([res.data], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Analytics export failed:", e);
+      setError("Failed to export analytics data.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const careLineData = useMemo(() => {
     const rows = Array.isArray(careEventsByMonth) ? careEventsByMonth : [];
@@ -164,21 +246,80 @@ export default function AdminAnalytics() {
             />
 
             <TextField
-              label="Organisation ID (optional)"
+              select
+              label="Month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              sx={{ minWidth: 180 }}
+            >
+              <MenuItem value="">All months</MenuItem>
+              {filterOptions.months.map((m) => (
+                <MenuItem key={m} value={m}>
+                  {monthLabelFromYYYYMM(m)}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              select
+              label="Clinic"
               value={organisationId}
               onChange={(e) => setOrganisationId(e.target.value)}
-              placeholder="e.g. UUID or text id"
               sx={{ minWidth: 260 }}
-            />
+            >
+              <MenuItem value="">All clinics</MenuItem>
+              {filterOptions.organisations.map((o) => (
+                <MenuItem key={o.organisation_id} value={o.organisation_id}>
+                  {o.name}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              select
+              label="Vaccination Type"
+              value={vaccineType}
+              onChange={(e) => setVaccineType(e.target.value)}
+              sx={{ minWidth: 220 }}
+            >
+              <MenuItem value="">All vaccination types</MenuItem>
+              {filterOptions.vaccine_types.map((value) => (
+                <MenuItem key={value} value={value}>
+                  {value}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              select
+              label="Visit Reason"
+              value={visitReason}
+              onChange={(e) => setVisitReason(e.target.value)}
+              sx={{ minWidth: 220 }}
+            >
+              <MenuItem value="">All visit reasons</MenuItem>
+              {filterOptions.visit_reasons.map((value) => (
+                <MenuItem key={value} value={value}>
+                  {value}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <Button variant="contained" onClick={handleExport} disabled={loading || exporting}>
+              {exporting ? "Exporting..." : "Export CSV"}
+            </Button>
 
             <Button
               variant="outlined"
               onClick={() => {
                 setStart("");
                 setEnd("");
+                setMonth("");
                 setOrganisationId("");
+                setVaccineType("");
+                setVisitReason("");
               }}
-              disabled={loading}
+              disabled={loading || exporting}
             >
               Clear
             </Button>
@@ -194,18 +335,18 @@ export default function AdminAnalytics() {
           </Typography>
           <Divider sx={{ mb: 2 }} />
 
-          <Box sx={{ height: 360 }}>
+          <Box sx={{ height: 380 }}>
             {hasCareLineData ? (
               <ResponsiveLine
                 data={careLineData}
-                margin={{ top: 20, right: 20, bottom: 60, left: 60 }}
+                margin={{ top: 85, right: 20, bottom: 70, left: 60 }}
                 xScale={{ type: "point" }}
                 yScale={{ type: "linear", stacked: false }}
                 colors={{ scheme: "set2" }}
                 axisBottom={{
-                  tickRotation: -35,
+                  tickRotation: -30,
                   legend: "Month",
-                  legendOffset: 48,
+                  legendOffset: 56,
                   legendPosition: "middle",
                 }}
                 axisLeft={{
@@ -217,17 +358,17 @@ export default function AdminAnalytics() {
                 useMesh
                 legends={[
                   {
-                    anchor: "bottom",
-                    direction: "row",
+                    anchor: "top-left",
+                    direction: "column",
                     justify: false,
                     translateX: 0,
-                    translateY: 56,
-                    itemsSpacing: 12,
+                    translateY: -72,
+                    itemsSpacing: 6,
                     itemDirection: "left-to-right",
-                    itemWidth: 100,
-                    itemHeight: 20,
-                    itemOpacity: 0.85,
-                    symbolSize: 12,
+                    itemWidth: 130,
+                    itemHeight: 18,
+                    itemOpacity: 0.9,
+                    symbolSize: 11,
                     symbolShape: "circle",
                     effects: [
                       {

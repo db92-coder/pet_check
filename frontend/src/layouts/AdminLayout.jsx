@@ -59,17 +59,19 @@ export default function AdminLayout() {
   const allowed = navItems.filter((i) => i.roles.includes(role));
 
   const drawerContent = (
-    <Box sx={{ height: "100%" }}>
+    <Box sx={{ height: "100%", color: "#fff" }}>
       <Box sx={theme.mixins.toolbar} />
 
-      <Box sx={{ px: 2, pb: 2 }}>
-        <Typography variant="h6" fontWeight={800}>Pet Check</Typography>
-        <Typography variant="body2" sx={{ opacity: 0.8 }}>
+      <Box sx={{ px: 2.5, pb: 2.5 }}>
+        <Typography variant="h6" fontWeight={800}>
+          Pet Protect
+        </Typography>
+        <Typography variant="body2" sx={{ opacity: 0.82 }}>
           {name} - {role}
         </Typography>
       </Box>
 
-      <Divider />
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.14)" }} />
 
       <List sx={{ px: 1, pt: 1 }}>
         {allowed.map((item) => {
@@ -82,7 +84,27 @@ export default function AdminLayout() {
                 nav(item.path);
                 setMobileOpen(false);
               }}
-              sx={{ borderRadius: 2, mx: 1, mb: 0.5 }}
+              sx={{
+                borderRadius: 2.5,
+                mx: 1,
+                mb: 0.5,
+                color: "rgba(255,255,255,0.88)",
+                "& .MuiListItemIcon-root": {
+                  color: "inherit",
+                  minWidth: 36,
+                },
+                "&.Mui-selected": {
+                  background: "linear-gradient(195deg, #49a3f1, #1A73E8)",
+                  boxShadow: "0 6px 14px rgba(0, 0, 0, 0.22)",
+                  color: "#fff",
+                },
+                "&.Mui-selected:hover": {
+                  background: "linear-gradient(195deg, #49a3f1, #1A73E8)",
+                },
+                "&:hover": {
+                  backgroundColor: "rgba(255,255,255,0.08)",
+                },
+              }}
             >
               <ListItemIcon>{item.icon}</ListItemIcon>
               <ListItemText primary={item.label} />
@@ -94,11 +116,27 @@ export default function AdminLayout() {
   );
 
   return (
-    <Box sx={{ display: "flex" }}>
-      <AppBar position="fixed" sx={{ zIndex: (t) => t.zIndex.drawer + 1 }}>
+    <Box
+      sx={{
+        display: "flex",
+        minHeight: "100vh",
+        background: "transparent",
+      }}
+    >
+      <AppBar
+        position="fixed"
+        elevation={0}
+        sx={{
+          zIndex: (t) => t.zIndex.drawer + 1,
+          backgroundColor: "rgba(255, 255, 255, 0.85)",
+          backdropFilter: "blur(8px)",
+          color: "text.primary",
+          borderBottom: "1px solid rgba(0,0,0,0.06)",
+        }}
+      >
         <Toolbar>
           <IconButton
-            color="inherit"
+            color="default"
             edge="start"
             onClick={() => setMobileOpen((v) => !v)}
             sx={{ mr: 2, display: { sm: "none" } }}
@@ -107,12 +145,12 @@ export default function AdminLayout() {
           </IconButton>
 
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            {allowed.find((x) => x.path === location.pathname)?.label || "Pet Check"}
+            {allowed.find((x) => x.path === location.pathname)?.label || "Pet Protect"}
           </Typography>
 
           <Tooltip title="Logout">
             <IconButton
-              color="inherit"
+              color="default"
               onClick={() => {
                 logout();
                 nav("/login");
@@ -130,7 +168,17 @@ export default function AdminLayout() {
           width: drawerWidth,
           flexShrink: 0,
           display: { xs: "none", sm: "block" },
-          [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: "border-box" },
+          [`& .MuiDrawer-paper`]: {
+            width: drawerWidth,
+            boxSizing: "border-box",
+            border: "none",
+            margin: 2,
+            height: "calc(100% - 32px)",
+            borderRadius: 4,
+            background: "linear-gradient(195deg, #42424a, #191919)",
+            boxShadow: "0 16px 30px rgba(0, 0, 0, 0.22)",
+            overflow: "hidden",
+          },
         }}
         open
       >
@@ -143,13 +191,26 @@ export default function AdminLayout() {
         onClose={() => setMobileOpen(false)}
         sx={{
           display: { xs: "block", sm: "none" },
-          [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: "border-box" },
+          [`& .MuiDrawer-paper`]: {
+            width: drawerWidth,
+            boxSizing: "border-box",
+            background: "linear-gradient(195deg, #42424a, #191919)",
+            color: "#fff",
+          },
         }}
       >
         {drawerContent}
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: { xs: 2, sm: 3 },
+          mt: 1,
+          minHeight: "100vh",
+        }}
+      >
         <Toolbar />
         <Outlet />
       </Box>

@@ -68,7 +68,7 @@ export default function Login() {
     <Box sx={{ minHeight: "100vh", display: "grid", placeItems: "center", p: 2 }}>
       <Paper sx={{ p: 4, width: "100%", maxWidth: 520 }}>
         <Typography variant="h4" fontWeight={800} gutterBottom>
-          Pet Check
+          Pet Protect
         </Typography>
         <Typography variant="body2" sx={{ opacity: 0.8, mb: 2 }}>
           Sign in with your user credentials, or create a new owner account.

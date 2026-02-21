@@ -51,6 +51,21 @@ const emptyPetForm = {
   photo: null,
 };
 
+const dashboardPageSx = {
+  p: { xs: 1.5, sm: 2.5 },
+  borderRadius: 3,
+  backgroundColor: "#e9f0f8",
+};
+
+const dashboardCardSx = {
+  p: 2,
+  minHeight: 210,
+  borderRadius: 3,
+  backgroundColor: "#ffffff",
+  border: "1px solid #d9e2ef",
+  boxShadow: "0 8px 20px rgba(16, 24, 40, 0.06)",
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
 
@@ -338,7 +353,7 @@ export default function Dashboard() {
   }
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={dashboardPageSx}>
       <Box>
         <Typography variant="h4" fontWeight={800}>
           Dashboard
@@ -352,7 +367,7 @@ export default function Dashboard() {
       {ownerNotResolved && <Alert severity="warning">Owner profile could not be resolved for this login.</Alert>}
 
       {loading ? (
-        <Paper sx={{ p: 3 }}>
+        <Paper sx={dashboardCardSx}>
           <Stack direction="row" spacing={1.5} alignItems="center">
             <CircularProgress size={20} />
             <Typography>Loading dashboard...</Typography>
@@ -360,9 +375,9 @@ export default function Dashboard() {
         </Paper>
       ) : (
         <>
-          <Grid container spacing={2}>
+          <Grid container spacing={2} alignItems="flex-start">
             <Grid size={{ xs: 12, md: 6 }}>
-              <Paper sx={{ p: 2 }}>
+              <Paper sx={dashboardCardSx}>
                 <Typography variant="h6" fontWeight={700}>Personal Information</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 <Stack spacing={1}>
@@ -375,7 +390,7 @@ export default function Dashboard() {
             </Grid>
 
             <Grid size={{ xs: 12, md: 6 }}>
-              <Paper sx={{ p: 2 }}>
+              <Paper sx={dashboardCardSx}>
                 <Typography variant="h6" fontWeight={700}>Summary</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -387,9 +402,9 @@ export default function Dashboard() {
             </Grid>
           </Grid>
 
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, lg: 5 }}>
-              <Paper sx={{ p: 2, height: "100%" }}>
+          <Grid container spacing={2} alignItems="flex-start">
+            <Grid size={{ xs: 12, md: 6, lg: 6 }}>
+              <Paper sx={dashboardCardSx}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="h6" fontWeight={700}>Current Pets</Typography>
                   {user?.role === "OWNER" && (
@@ -443,8 +458,8 @@ export default function Dashboard() {
               </Paper>
             </Grid>
 
-            <Grid size={{ xs: 12, lg: 7 }}>
-              <Paper sx={{ p: 2, mb: 2 }}>
+            <Grid size={{ xs: 12, md: 6, lg: 6 }}>
+              <Paper sx={{ ...dashboardCardSx, mb: 2 }}>
                 <Typography variant="h6" fontWeight={700}>Upcoming Appointments</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 {appointments.length === 0 ? (
@@ -466,7 +481,7 @@ export default function Dashboard() {
                 )}
               </Paper>
 
-              <Paper sx={{ p: 2 }}>
+              <Paper sx={dashboardCardSx}>
                 <Typography variant="h6" fontWeight={700}>Vaccination Due Dates</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 {vaccinationDue.length === 0 ? (
@@ -485,7 +500,7 @@ export default function Dashboard() {
                 )}
               </Paper>
 
-              <Paper sx={{ p: 2, mt: 2 }}>
+              <Paper sx={{ ...dashboardCardSx, mt: 2 }}>
                 <Typography variant="h6" fontWeight={700}>Weight Trend</Typography>
                 <Divider sx={{ my: 1.5 }} />
 
