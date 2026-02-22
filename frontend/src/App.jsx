@@ -10,6 +10,10 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
 import Pets from "./pages/Pets.jsx";
 import AdminAnalytics from "./pages/AdminAnalytics.jsx";
+import Visits from "./pages/Visits.jsx";
+import Owners from "./pages/Owners.jsx";
+import Clinics from "./pages/Clinics.jsx";
+import Staff from "./pages/Staff.jsx";
 
 export default function App() {
   return (
@@ -23,10 +27,10 @@ export default function App() {
 
           <Route element={<RequireRole roles={["ADMIN", "VET"]} />}>
             <Route path="/pets" element={<Pets />} />
-            <Route path="/visits" element={<Placeholder title="Visits" />} />
-            <Route path="/owners" element={<Placeholder title="Owners" />} />
-            <Route path="/clinics" element={<Placeholder title="Clinics" />} />
-            <Route path="/staff" element={<Placeholder title="Staff" />} />
+            <Route path="/visits" element={<Visits />} />
+            <Route path="/owners" element={<Owners />} />
+            <Route path="/clinics" element={<Clinics />} />
+            <Route path="/staff" element={<Staff />} />
             <Route path="/users" element={<Placeholder title="Users" />} />
           </Route>
 

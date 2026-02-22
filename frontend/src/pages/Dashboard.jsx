@@ -51,6 +51,32 @@ const emptyPetForm = {
   photo: null,
 };
 
+const dashboardPageSx = {
+  p: { xs: 1.5, sm: 2.5 },
+  borderRadius: 3,
+  backgroundColor: "#e9f0f8",
+};
+
+const dashboardCardSx = {
+  p: 2,
+  minHeight: 210,
+  borderRadius: 3,
+  backgroundColor: "#ffffff",
+  border: "1px solid #d9e2ef",
+  boxShadow: "0 8px 20px rgba(16, 24, 40, 0.06)",
+};
+
+function dashboardSubtitleForRole(role) {
+  const roleKey = String(role || "").toUpperCase();
+  if (roleKey === "ADMIN") {
+    return "Monitor clinic KPIs, operational performance, and unresolved concerns across the network.";
+  }
+  if (roleKey === "VET") {
+    return "Track your clinic's appointments, action items, medication demand, and stock-related alerts.";
+  }
+  return "Overview of your pets, appointments, and upcoming vaccine due dates.";
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
 
@@ -65,6 +91,10 @@ export default function Dashboard() {
   const [medications, setMedications] = useState([]);
   const [petWeights, setPetWeights] = useState([]);
   const [ownerNotResolved, setOwnerNotResolved] = useState(false);
+  const [eligibility, setEligibility] = useState(null);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const [roleKpis, setRoleKpis] = useState(null);
+  const [roleKpisLoading, setRoleKpisLoading] = useState(false);
   const [selectedPetId, setSelectedPetId] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [weightDate, setWeightDate] = useState("");
@@ -79,6 +109,29 @@ export default function Dashboard() {
     setError("");
 
     try {
+      const role = (user?.role || "").toUpperCase();
+
+      if (role === "ADMIN" || role === "VET") {
+        setRoleKpisLoading(true);
+        const kpiRes = await api.get("/dashboard/kpis", {
+          params: {
+            role,
+            user_id: role === "VET" ? user?.user_id : undefined,
+          },
+        });
+        setRoleKpis(kpiRes?.data || null);
+        setPets([]);
+        setAppointments([]);
+        setVaccinationDue([]);
+        setVaccinations([]);
+        setMedications([]);
+        setPetWeights([]);
+        setEligibility(null);
+        setOwnerNotResolved(false);
+        setRoleKpisLoading(false);
+        return;
+      }
+
       const [petsRes, visitsRes] = await Promise.all([
         api.get("/pets", { params: { user_id: user?.user_id, limit: 1000 } }),
         api.get("/visits", { params: { limit: 5000 } }),
@@ -90,6 +143,23 @@ export default function Dashboard() {
       const resolvedOwnerId = currentPets.length > 0 ? currentPets[0].owner_id : null;
       setOwnerNotResolved(user?.role === "OWNER" && Boolean(user?.user_id) && !resolvedOwnerId);
       setPets(currentPets);
+      setRoleKpis(null);
+      setEligibility(null);
+
+      if (resolvedOwnerId && (user?.role || "").toUpperCase() === "OWNER") {
+        setEligibilityLoading(true);
+        try {
+          const eligRes = await api.get(`/eligibility/owner/${resolvedOwnerId}`);
+          setEligibility(eligRes?.data || null);
+        } catch (eligErr) {
+          console.error("Eligibility load failed", eligErr);
+          setEligibility(null);
+        } finally {
+          setEligibilityLoading(false);
+        }
+      } else {
+        setEligibilityLoading(false);
+      }
 
       const petIdSet = new Set(currentPets.map((p) => String(p.id)));
       const now = new Date();
@@ -149,6 +219,7 @@ export default function Dashboard() {
       console.error("Dashboard load failed", e);
       setError("Failed to load dashboard data.");
     } finally {
+      setRoleKpisLoading(false);
       setLoading(false);
     }
   }, [user?.role, user?.user_id]);
@@ -338,13 +409,13 @@ export default function Dashboard() {
   }
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={dashboardPageSx}>
       <Box>
         <Typography variant="h4" fontWeight={800}>
           Dashboard
         </Typography>
         <Typography sx={{ opacity: 0.8 }}>
-          Overview of your pets, appointments, and upcoming vaccine due dates.
+          {dashboardSubtitleForRole(user?.role)}
         </Typography>
       </Box>
 
@@ -352,7 +423,7 @@ export default function Dashboard() {
       {ownerNotResolved && <Alert severity="warning">Owner profile could not be resolved for this login.</Alert>}
 
       {loading ? (
-        <Paper sx={{ p: 3 }}>
+        <Paper sx={dashboardCardSx}>
           <Stack direction="row" spacing={1.5} alignItems="center">
             <CircularProgress size={20} />
             <Typography>Loading dashboard...</Typography>
@@ -360,9 +431,156 @@ export default function Dashboard() {
         </Paper>
       ) : (
         <>
-          <Grid container spacing={2}>
+          {(user?.role || "").toUpperCase() === "ADMIN" && (
+            <>
+              <Grid container spacing={2} alignItems="flex-start">
+                <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Visits Today</Typography>
+                    <Typography variant="h3" fontWeight={800}>{roleKpis?.summary?.visits_today ?? 0}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Visits This Week</Typography>
+                    <Typography variant="h3" fontWeight={800}>{roleKpis?.summary?.visits_week ?? 0}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Visits This Month</Typography>
+                    <Typography variant="h3" fontWeight={800}>{roleKpis?.summary?.visits_month ?? 0}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Concerns Unfollowed</Typography>
+                    <Typography variant="h3" fontWeight={800}>{roleKpis?.summary?.concerns_unfollowed ?? 0}</Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={2} alignItems="flex-start">
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Clinic Operations</Typography>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <Chip label={`Clinics: ${roleKpis?.summary?.clinic_count ?? 0}`} color="primary" />
+                      <Chip label={`Staff registered: ${roleKpis?.summary?.staff_registered ?? 0}`} color="secondary" />
+                      <Chip label={`Missed appts (month): ${roleKpis?.summary?.missed_appointments_month ?? 0}`} color="warning" />
+                      <Chip label={`Injury visits (month): ${roleKpis?.summary?.injury_related_visits_month ?? 0}`} color="error" />
+                    </Stack>
+                  </Paper>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Top Clinics By Visits</Typography>
+                    <Divider sx={{ my: 1.5 }} />
+                    {roleKpisLoading ? (
+                      <Typography sx={{ opacity: 0.75 }}>Loading KPI data...</Typography>
+                    ) : (roleKpis?.visits_by_clinic || []).length === 0 ? (
+                      <Typography sx={{ opacity: 0.75 }}>No clinic visit data.</Typography>
+                    ) : (
+                      <List dense>
+                        {(roleKpis?.visits_by_clinic || []).map((r) => (
+                          <ListItem key={r.organisation_id} disableGutters>
+                            <ListItemText primary={r.clinic_name || "Unknown clinic"} secondary={`Visits: ${r.visits ?? 0}`} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
+            </>
+          )}
+
+          {(user?.role || "").toUpperCase() === "VET" && (
+            <>
+              <Grid container spacing={2} alignItems="flex-start">
+                <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Appointments Today</Typography>
+                    <Typography variant="h3" fontWeight={800}>{roleKpis?.summary?.appointments_today ?? 0}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>This Week</Typography>
+                    <Typography variant="h3" fontWeight={800}>{roleKpis?.summary?.appointments_week ?? 0}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Concerns To Action</Typography>
+                    <Typography variant="h3" fontWeight={800}>{roleKpis?.summary?.concerns_to_action ?? 0}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Stock Low Alerts</Typography>
+                    <Typography variant="h3" fontWeight={800}>{roleKpis?.summary?.stock_low_alerts ?? 0}</Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={2} alignItems="flex-start">
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Action Queue</Typography>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <Chip label={`Cancellations (month): ${roleKpis?.summary?.cancellations_month ?? 0}`} color="warning" />
+                      <Chip label={`Injury cases (month): ${roleKpis?.summary?.injury_cases_month ?? 0}`} color="error" />
+                      <Chip label={`Medications due review: ${roleKpis?.summary?.medications_due_review ?? 0}`} color="secondary" />
+                    </Stack>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.75 }}>
+                      Linked clinics
+                    </Typography>
+                    {(roleKpis?.clinics || []).length === 0 ? (
+                      <Typography sx={{ opacity: 0.75 }}>No clinic membership found for this vet account.</Typography>
+                    ) : (
+                      <List dense>
+                        {(roleKpis?.clinics || []).map((clinic) => (
+                          <ListItem key={clinic.organisation_id} disableGutters>
+                            <ListItemText primary={clinic.clinic_name || "Unknown clinic"} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                  </Paper>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Paper sx={dashboardCardSx}>
+                    <Typography variant="h6" fontWeight={700}>Medication Demand (30d)</Typography>
+                    <Divider sx={{ my: 1.5 }} />
+                    {roleKpisLoading ? (
+                      <Typography sx={{ opacity: 0.75 }}>Loading KPI data...</Typography>
+                    ) : (roleKpis?.medication_demand || []).length === 0 ? (
+                      <Typography sx={{ opacity: 0.75 }}>No medication demand records.</Typography>
+                    ) : (
+                      <List dense>
+                        {(roleKpis?.medication_demand || []).map((row) => (
+                          <ListItem key={row.medication_name} disableGutters>
+                            <ListItemText primary={row.medication_name || "Unknown"} secondary={`Prescribed (30d): ${row.prescribed_count_30d ?? 0}`} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
+            </>
+          )}
+
+          {(user?.role || "").toUpperCase() === "OWNER" && (
+          <Grid container spacing={2} alignItems="flex-start">
             <Grid size={{ xs: 12, md: 6 }}>
-              <Paper sx={{ p: 2 }}>
+              <Paper sx={dashboardCardSx}>
                 <Typography variant="h6" fontWeight={700}>Personal Information</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 <Stack spacing={1}>
@@ -375,21 +593,49 @@ export default function Dashboard() {
             </Grid>
 
             <Grid size={{ xs: 12, md: 6 }}>
-              <Paper sx={{ p: 2 }}>
+              <Paper sx={dashboardCardSx}>
                 <Typography variant="h6" fontWeight={700}>Summary</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   <Chip label={`Current pets: ${pets.length}`} color="primary" />
                   <Chip label={`Upcoming appointments: ${appointments.length}`} color="secondary" />
                   <Chip label={`Vaccines due: ${vaccinationDue.length}`} color="warning" />
+                  {(user?.role || "").toUpperCase() === "OWNER" && eligibilityLoading && (
+                    <Chip label="Eligibility: loading..." variant="outlined" />
+                  )}
+                  {(user?.role || "").toUpperCase() === "OWNER" && eligibility && (
+                    <>
+                      <Chip label={`Eligibility score: ${Number(eligibility.overall_eligibility_score || 0).toFixed(2)}`} color="success" />
+                      <Chip
+                        label={`Risk: ${eligibility.risk_level || "-"}`}
+                        color={
+                          eligibility.risk_level === "HIGH"
+                            ? "error"
+                            : eligibility.risk_level === "MEDIUM"
+                              ? "warning"
+                              : "success"
+                        }
+                        variant="outlined"
+                      />
+                      <Chip label={`Vet score: ${Number(eligibility.vet_score || 0).toFixed(2)}`} variant="outlined" />
+                      <Chip label={`Govt score: ${Number(eligibility.gov_score || 0).toFixed(2)}`} variant="outlined" />
+                    </>
+                  )}
                 </Stack>
+                {(user?.role || "").toUpperCase() === "OWNER" && eligibility && (
+                  <Typography sx={{ mt: 1.5, opacity: 0.8 }}>
+                    Estimated annual minimum care cost: ${Number(eligibility.annual_required_cost_min || 0).toLocaleString()}
+                  </Typography>
+                )}
               </Paper>
             </Grid>
           </Grid>
+          )}
 
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, lg: 5 }}>
-              <Paper sx={{ p: 2, height: "100%" }}>
+          {(user?.role || "").toUpperCase() === "OWNER" && (
+          <Grid container spacing={2} alignItems="flex-start">
+            <Grid size={{ xs: 12, md: 6, lg: 6 }}>
+              <Paper sx={dashboardCardSx}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="h6" fontWeight={700}>Current Pets</Typography>
                   {user?.role === "OWNER" && (
@@ -443,8 +689,8 @@ export default function Dashboard() {
               </Paper>
             </Grid>
 
-            <Grid size={{ xs: 12, lg: 7 }}>
-              <Paper sx={{ p: 2, mb: 2 }}>
+            <Grid size={{ xs: 12, md: 6, lg: 6 }}>
+              <Paper sx={{ ...dashboardCardSx, mb: 2 }}>
                 <Typography variant="h6" fontWeight={700}>Upcoming Appointments</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 {appointments.length === 0 ? (
@@ -466,7 +712,7 @@ export default function Dashboard() {
                 )}
               </Paper>
 
-              <Paper sx={{ p: 2 }}>
+              <Paper sx={dashboardCardSx}>
                 <Typography variant="h6" fontWeight={700}>Vaccination Due Dates</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 {vaccinationDue.length === 0 ? (
@@ -485,7 +731,7 @@ export default function Dashboard() {
                 )}
               </Paper>
 
-              <Paper sx={{ p: 2, mt: 2 }}>
+              <Paper sx={{ ...dashboardCardSx, mt: 2 }}>
                 <Typography variant="h6" fontWeight={700}>Weight Trend</Typography>
                 <Divider sx={{ my: 1.5 }} />
 
@@ -556,6 +802,7 @@ export default function Dashboard() {
               </Paper>
             </Grid>
           </Grid>
+          )}
         </>
       )}
 

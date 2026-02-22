@@ -17,6 +17,8 @@ from app.db.models.user import User
 from app.db.models.vaccination import Vaccination
 from app.db.models.weight import Weight
 from app.db.models.medication import Medication
+from app.db.models.vet_visit import VetVisit
+from app.db.models.organisation import Organisation
 
 router = APIRouter()
 
@@ -73,6 +75,28 @@ def list_pets(
     owner_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    latest_clinic_id_sq = (
+        select(VetVisit.organisation_id)
+        .where(
+            VetVisit.pet_id == Pet.pet_id,
+            VetVisit.organisation_id.is_not(None),
+        )
+        .order_by(desc(VetVisit.visit_datetime))
+        .limit(1)
+        .scalar_subquery()
+    )
+    latest_clinic_name_sq = (
+        select(Organisation.name)
+        .join(VetVisit, VetVisit.organisation_id == Organisation.organisation_id)
+        .where(
+            VetVisit.pet_id == Pet.pet_id,
+            VetVisit.organisation_id.is_not(None),
+        )
+        .order_by(desc(VetVisit.visit_datetime))
+        .limit(1)
+        .scalar_subquery()
+    )
+
     stmt = (
         select(
             Pet.pet_id.label("id"),
@@ -93,6 +117,8 @@ def list_pets(
             User.email.label("owner_email"),
             User.full_name.label("owner_full_name"),
             User.phone.label("owner_phone"),
+            latest_clinic_id_sq.label("clinic_id"),
+            latest_clinic_name_sq.label("clinic_name"),
         )
         .select_from(Pet)
         .outerjoin(OwnerPet, OwnerPet.pet_id == Pet.pet_id)
@@ -121,6 +147,8 @@ def list_pets(
             d["owner_id"] = str(d["owner_id"])
         if d.get("user_id"):
             d["user_id"] = str(d["user_id"])
+        if d.get("clinic_id"):
+            d["clinic_id"] = str(d["clinic_id"])
 
         d["has_photo"] = bool(d.get("photo_mime_type"))
         out.append(d)

@@ -1,4 +1,4 @@
-# Pet Check
+# Pet Protect
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-informational)](https://www.docker.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-informational)](https://www.postgresql.org/)
@@ -7,7 +7,7 @@
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-informational)](https://www.sqlalchemy.org/)
 [![React](https://img.shields.io/badge/React-Frontend-informational)](https://react.dev/)
 
-Pet Check is a full-stack pet health management platform with role-based access, owner-facing pet care dashboards, analytics, and seeded development data.
+Pet Protect is a full-stack pet health management platform with role-based access, owner-facing pet care dashboards, analytics, and seeded development data.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ Pet Check is a full-stack pet health management platform with role-based access,
 
 ## Overview
 
-Pet Check supports:
+Pet Protect supports:
 
 - Secure login based on credentials in the `users` table.
 - Dynamic role-aware navigation and page access.

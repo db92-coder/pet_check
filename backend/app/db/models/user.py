@@ -20,6 +20,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String, nullable=False, default="OWNER")
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     phone: Mapped[str] = mapped_column(String, nullable=True)
+    address: Mapped[str] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
