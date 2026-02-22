@@ -38,6 +38,143 @@ function haversineKm(a, b) {
   return R * c;
 }
 
+function ClinicMapPanel({ centerClinic, nearbyClinics }) {
+  const mapRef = React.useRef(null);
+  const mapInstanceRef = React.useRef(null);
+  const markersLayerRef = React.useRef(null);
+  const [leafletReady, setLeafletReady] = React.useState(Boolean(window.L));
+
+  const points = React.useMemo(() => {
+    if (!centerClinic) return [];
+    return [
+      { ...centerClinic, _isCenter: true },
+      ...nearbyClinics.map((c) => ({ ...c, _isCenter: false })),
+    ].filter((p) => Number.isFinite(toNum(p.latitude)) && Number.isFinite(toNum(p.longitude)));
+  }, [centerClinic, nearbyClinics]);
+
+  React.useEffect(() => {
+    if (window.L) {
+      setLeafletReady(true);
+      return;
+    }
+
+    const cssId = "leaflet-css-cdn";
+    const jsId = "leaflet-js-cdn";
+
+    if (!document.getElementById(cssId)) {
+      const link = document.createElement("link");
+      link.id = cssId;
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(link);
+    }
+
+    if (!document.getElementById(jsId)) {
+      const script = document.createElement("script");
+      script.id = jsId;
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.async = true;
+      script.onload = () => setLeafletReady(true);
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!leafletReady || !mapRef.current || points.length === 0) return;
+    const L = window.L;
+    if (!L) return;
+
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = L.map(mapRef.current, {
+        zoomControl: true,
+        attributionControl: true,
+      });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(mapInstanceRef.current);
+    }
+
+    if (markersLayerRef.current) {
+      markersLayerRef.current.remove();
+    }
+    markersLayerRef.current = L.layerGroup().addTo(mapInstanceRef.current);
+
+    const latLngs = [];
+    points.forEach((point) => {
+      const lat = toNum(point.latitude);
+      const lon = toNum(point.longitude);
+      const color = point._isCenter ? "#1565c0" : "#2e7d32";
+      latLngs.push([lat, lon]);
+      L.circleMarker([lat, lon], {
+        radius: point._isCenter ? 9 : 6,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 0.95,
+      })
+        .addTo(markersLayerRef.current)
+        .bindTooltip(point.name || "Clinic", { direction: "top", offset: [0, -8] });
+    });
+
+    const bounds = L.latLngBounds(latLngs);
+    if (latLngs.length === 1) {
+      mapInstanceRef.current.setView(latLngs[0], 10);
+    } else {
+      mapInstanceRef.current.fitBounds(bounds, { padding: [20, 20] });
+    }
+  }, [leafletReady, points]);
+
+  React.useEffect(() => {
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  if (!centerClinic || points.length === 0) {
+    return <Typography sx={{ opacity: 0.75 }}>Map unavailable.</Typography>;
+  }
+
+  return (
+    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5, overflow: "hidden" }}>
+      <Box
+        sx={{
+          px: 1.5,
+          py: 1,
+          background:
+            "linear-gradient(90deg, rgba(13,71,161,0.06) 0%, rgba(46,125,50,0.06) 100%)",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+          Surrounding Clinics Map (OpenStreetMap)
+        </Typography>
+      </Box>
+      <Box sx={{ p: 1, backgroundColor: "#f8fafc" }}>
+        <Box
+          ref={mapRef}
+          sx={{
+            width: "100%",
+            height: 340,
+            borderRadius: 1,
+            overflow: "hidden",
+            border: "1px solid",
+            borderColor: "divider",
+          }}
+        />
+        <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
+          <Typography variant="caption"><strong style={{ color: "#1565c0" }}>Blue</strong>: selected clinic</Typography>
+          <Typography variant="caption"><strong style={{ color: "#2e7d32" }}>Green</strong>: nearby clinics</Typography>
+        </Stack>
+      </Box>
+    </Box>
+  );
+}
+
 export default function Clinics() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
@@ -88,6 +225,8 @@ export default function Clinics() {
       .sort((a, b) => a.distance_km - b.distance_km)
       .slice(0, 8);
   }, [clinics, selectedClinic]);
+
+  const mappedNearby = React.useMemo(() => nearby.slice(0, 12), [nearby]);
 
   return (
     <Stack spacing={2}>
@@ -161,6 +300,16 @@ export default function Clinics() {
                 <Typography><strong>Visits (30d):</strong> {selectedClinic.visits_last_30d ?? 0}</Typography>
                 <Typography><strong>Cancellations (30d):</strong> {selectedClinic.cancellations_last_30d ?? 0}</Typography>
                 <Typography><strong>Upcoming visits (7d):</strong> {selectedClinic.upcoming_visits_next_7d ?? 0}</Typography>
+                {selectedClinic.metrics_simulated && (
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    Upcoming/cancellation metrics are currently simulated for planning views.
+                  </Typography>
+                )}
+                {selectedClinic.geo_simulated && (
+                  <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                    Geolocation is currently simulated where source coordinates are unavailable.
+                  </Typography>
+                )}
 
                 <Box />
                 <Typography variant="subtitle1" fontWeight={700}>Nearest Clinics</Typography>
@@ -178,6 +327,10 @@ export default function Clinics() {
                     ))}
                   </List>
                 )}
+
+                <Box sx={{ pt: 1 }}>
+                  <ClinicMapPanel centerClinic={selectedClinic} nearbyClinics={mappedNearby} />
+                </Box>
               </Stack>
             )}
           </Paper>
