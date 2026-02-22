@@ -120,27 +120,55 @@ def dashboard_kpis(
             raise HTTPException(status_code=400, detail="user_id is required for VET dashboard KPIs")
         uid = _parse_uuid(user_id, "user_id")
 
+        clinics_q = text(
+            """
+            SELECT om.organisation_id::text AS organisation_id, o.name AS clinic_name
+            FROM organisation_members om
+            JOIN organisations o ON o.organisation_id = om.organisation_id
+            WHERE om.user_id = :uid
+            ORDER BY o.name
+            """
+        )
+        clinic_rows = list(db.execute(clinics_q, {"uid": uid}).mappings().all())
+        clinic_ids = [row["organisation_id"] for row in clinic_rows if row.get("organisation_id")]
+        if not clinic_ids:
+            return {
+                "role": "VET",
+                "summary": {
+                    "appointments_today": 0,
+                    "appointments_week": 0,
+                    "appointments_month": 0,
+                    "concerns_to_action": 0,
+                    "cancellations_month": 0,
+                    "injury_cases_month": 0,
+                    "medications_due_review": 0,
+                    "stock_low_alerts": 0,
+                },
+                "clinics": [],
+                "medication_demand": [],
+            }
+
         summary_q = text(
             """
             SELECT
               (SELECT COUNT(*)::int
                  FROM vet_visits vv
-                WHERE vv.vet_user_id = :uid
+                WHERE vv.organisation_id::text = ANY(:clinic_ids)
                   AND vv.visit_datetime::date = CURRENT_DATE
               ) AS appointments_today,
               (SELECT COUNT(*)::int
                  FROM vet_visits vv
-                WHERE vv.vet_user_id = :uid
+                WHERE vv.organisation_id::text = ANY(:clinic_ids)
                   AND vv.visit_datetime >= date_trunc('week', NOW())
               ) AS appointments_week,
               (SELECT COUNT(*)::int
                  FROM vet_visits vv
-                WHERE vv.vet_user_id = :uid
+                WHERE vv.organisation_id::text = ANY(:clinic_ids)
                   AND vv.visit_datetime >= date_trunc('month', NOW())
               ) AS appointments_month,
               (SELECT COUNT(*)::int
                  FROM vet_visits vv
-                WHERE vv.vet_user_id = :uid
+                WHERE vv.organisation_id::text = ANY(:clinic_ids)
                   AND (
                     LOWER(COALESCE(vv.reason, '')) LIKE '%follow%' OR
                     LOWER(COALESCE(vv.notes_visible_to_owner, '')) LIKE '%follow%'
@@ -148,7 +176,7 @@ def dashboard_kpis(
               ) AS concerns_to_action,
               (SELECT COUNT(*)::int
                  FROM vet_visits vv
-                WHERE vv.vet_user_id = :uid
+                WHERE vv.organisation_id::text = ANY(:clinic_ids)
                   AND vv.visit_datetime >= date_trunc('month', NOW())
                   AND (
                     LOWER(COALESCE(vv.reason, '')) LIKE '%cancel%' OR
@@ -158,7 +186,7 @@ def dashboard_kpis(
               ) AS cancellations_month,
               (SELECT COUNT(*)::int
                  FROM vet_visits vv
-                WHERE vv.vet_user_id = :uid
+                WHERE vv.organisation_id::text = ANY(:clinic_ids)
                   AND vv.visit_datetime >= date_trunc('month', NOW())
                   AND (
                     LOWER(COALESCE(vv.reason, '')) LIKE '%injury%' OR
@@ -176,7 +204,7 @@ def dashboard_kpis(
                     SELECT 1
                     FROM vet_visits vv
                     WHERE vv.pet_id = m.pet_id
-                      AND vv.vet_user_id = :uid
+                      AND vv.organisation_id::text = ANY(:clinic_ids)
                   )
               ) AS medications_due_review
             """
@@ -193,7 +221,7 @@ def dashboard_kpis(
                 SELECT 1
                 FROM vet_visits vv
                 WHERE vv.pet_id = m.pet_id
-                  AND vv.vet_user_id = :uid
+                  AND vv.organisation_id::text = ANY(:clinic_ids)
               )
             GROUP BY m.name
             ORDER BY prescribed_count_30d DESC, medication_name ASC
@@ -201,15 +229,17 @@ def dashboard_kpis(
             """
         )
 
-        med_rows = list(db.execute(medication_demand_q, {"uid": uid}).mappings().all())
+        query_params = {"uid": uid, "clinic_ids": clinic_ids}
+        med_rows = list(db.execute(medication_demand_q, query_params).mappings().all())
         stock_low_alerts = sum(1 for r in med_rows if int(r.get("prescribed_count_30d") or 0) >= 4)
 
-        summary = dict(db.execute(summary_q, {"uid": uid}).mappings().one())
+        summary = dict(db.execute(summary_q, query_params).mappings().one())
         summary["stock_low_alerts"] = stock_low_alerts
 
         return {
             "role": "VET",
             "summary": summary,
+            "clinics": clinic_rows,
             "medication_demand": med_rows,
         }
 

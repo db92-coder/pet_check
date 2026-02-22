@@ -66,6 +66,17 @@ const dashboardCardSx = {
   boxShadow: "0 8px 20px rgba(16, 24, 40, 0.06)",
 };
 
+function dashboardSubtitleForRole(role) {
+  const roleKey = String(role || "").toUpperCase();
+  if (roleKey === "ADMIN") {
+    return "Monitor clinic KPIs, operational performance, and unresolved concerns across the network.";
+  }
+  if (roleKey === "VET") {
+    return "Track your clinic's appointments, action items, medication demand, and stock-related alerts.";
+  }
+  return "Overview of your pets, appointments, and upcoming vaccine due dates.";
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
 
@@ -404,7 +415,7 @@ export default function Dashboard() {
           Dashboard
         </Typography>
         <Typography sx={{ opacity: 0.8 }}>
-          Overview of your pets, appointments, and upcoming vaccine due dates.
+          {dashboardSubtitleForRole(user?.role)}
         </Typography>
       </Box>
 
@@ -525,6 +536,21 @@ export default function Dashboard() {
                       <Chip label={`Injury cases (month): ${roleKpis?.summary?.injury_cases_month ?? 0}`} color="error" />
                       <Chip label={`Medications due review: ${roleKpis?.summary?.medications_due_review ?? 0}`} color="secondary" />
                     </Stack>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.75 }}>
+                      Linked clinics
+                    </Typography>
+                    {(roleKpis?.clinics || []).length === 0 ? (
+                      <Typography sx={{ opacity: 0.75 }}>No clinic membership found for this vet account.</Typography>
+                    ) : (
+                      <List dense>
+                        {(roleKpis?.clinics || []).map((clinic) => (
+                          <ListItem key={clinic.organisation_id} disableGutters>
+                            <ListItemText primary={clinic.clinic_name || "Unknown clinic"} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
                   </Paper>
                 </Grid>
 

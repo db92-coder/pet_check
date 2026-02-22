@@ -70,6 +70,14 @@ with engine.begin() as conn:
     conn.execute(
         text(
             """
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS address VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
             UPDATE users
             SET role = 'OWNER'
             WHERE role IS NULL;
@@ -142,6 +150,62 @@ with engine.begin() as conn:
     conn.execute(
         text(
             """
+            ALTER TABLE organisations ADD COLUMN IF NOT EXISTS phone VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE organisations ADD COLUMN IF NOT EXISTS email VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE organisations ADD COLUMN IF NOT EXISTS address VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE organisations ADD COLUMN IF NOT EXISTS suburb VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE organisations ADD COLUMN IF NOT EXISTS state VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE organisations ADD COLUMN IF NOT EXISTS postcode VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE organisations ADD COLUMN IF NOT EXISTS latitude VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            ALTER TABLE organisations ADD COLUMN IF NOT EXISTS longitude VARCHAR;
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
             CREATE TABLE IF NOT EXISTS vet_cost_guidelines (
                 guideline_id UUID PRIMARY KEY,
                 species VARCHAR NOT NULL,
@@ -176,6 +240,22 @@ with engine.begin() as conn:
                 household_income NUMERIC(12,2) NOT NULL,
                 credit_score INTEGER NOT NULL,
                 basic_living_expenses NUMERIC(12,2) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS staff_leaves (
+                leave_id UUID PRIMARY KEY,
+                organisation_id UUID NOT NULL REFERENCES organisations(organisation_id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                reason VARCHAR,
+                status VARCHAR NOT NULL DEFAULT 'PENDING',
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             );
             """

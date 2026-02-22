@@ -2,6 +2,7 @@ from faker import Faker
 import random
 import string
 import csv
+import uuid
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
 from sqlalchemy import text
@@ -21,6 +22,7 @@ from app.db.models.vaccination import Vaccination
 from app.db.models.medication import Medication
 from app.db.models.vet_cost_guideline import VetCostGuideline
 from app.db.models.owner_gov_profile import OwnerGovProfile
+from app.db.models.staff_leave import StaffLeave
 
 fake = Faker()
 
@@ -45,6 +47,8 @@ def ensure_user_auth_columns(session) -> None:
     session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR;"))
     session.execute(text("UPDATE users SET role = 'OWNER' WHERE role IS NULL;"))
     session.execute(text("ALTER TABLE users ALTER COLUMN role SET NOT NULL;"))
+    session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS address VARCHAR;"))
+    session.execute(text("UPDATE users SET address = 'Unknown address' WHERE address IS NULL;"))
     session.commit()
 
 
@@ -59,6 +63,34 @@ def ensure_pet_health_columns(session) -> None:
                          "start_date DATE,"
                          "end_date DATE"
                          ");"))
+    session.commit()
+
+
+def ensure_clinic_profile_columns(session) -> None:
+    session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS phone VARCHAR;"))
+    session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS email VARCHAR;"))
+    session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS address VARCHAR;"))
+    session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS suburb VARCHAR;"))
+    session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS state VARCHAR;"))
+    session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS postcode VARCHAR;"))
+    session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS latitude VARCHAR;"))
+    session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS longitude VARCHAR;"))
+    session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS staff_leaves (
+                leave_id UUID PRIMARY KEY,
+                organisation_id UUID NOT NULL REFERENCES organisations(organisation_id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                reason VARCHAR,
+                status VARCHAR NOT NULL DEFAULT 'PENDING',
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+            """
+        )
+    )
     session.commit()
 
 
@@ -121,6 +153,7 @@ def export_credentials(users: list[User]) -> Path:
 def reset_db(session) -> None:
     session.execute(text("""
         TRUNCATE TABLE
+          staff_leaves,
           owner_gov_profiles,
           vet_cost_guidelines,
           medications,
@@ -236,6 +269,7 @@ def seed_users(session, n: int = 200) -> list[User]:
             role=role,
             full_name=fake.name(),
             phone=generate_au_mobile(),
+            address=fake.address().replace("\n", ", "),
         ))
     session.add_all(users)
     session.commit()
@@ -338,10 +372,24 @@ def seed_owner_pets(session, owners: list[Owner], pets: list[Pet]) -> int:
 
 def seed_clinics(session, n: int = 5) -> list[Organisation]:
     clinics: list[Organisation] = []
+    au_states = ["NSW", "VIC", "QLD", "WA", "SA", "ACT", "TAS", "NT"]
     for _ in range(n):
+        suburb = fake.city()
+        state = random.choice(au_states)
+        postcode = f"{random.randint(2000, 7999)}"
+        lat = round(random.uniform(-38.0, -12.0), 6)
+        lng = round(random.uniform(113.0, 153.0), 6)
         clinics.append(Organisation(
             name=f"{fake.last_name()} Veterinary Clinic",
-            org_type="vet_clinic"
+            org_type="vet_clinic",
+            phone=generate_au_mobile(),
+            email=f"contact@{fake.domain_word()}clinic.au",
+            address=f"{fake.building_number()} {fake.street_name()}",
+            suburb=suburb,
+            state=state,
+            postcode=postcode,
+            latitude=str(lat),
+            longitude=str(lng),
         ))
     session.add_all(clinics)
     session.commit()
@@ -356,12 +404,17 @@ def seed_vet_staff(session, users: list[User], clinics: list[Organisation], n_ve
     vet_users = random.sample(eligible, k=min(n_vets, len(eligible)))
     members: list[OrganisationMember] = []
 
+    clinic_has_manager: dict[str, bool] = {str(c.organisation_id): False for c in clinics}
+
     for u in vet_users:
         clinic = random.choice(clinics)
+        cid = str(clinic.organisation_id)
+        role = "manager" if not clinic_has_manager[cid] else random.choice(["vet", "nurse"])
+        clinic_has_manager[cid] = True
         members.append(OrganisationMember(
             organisation_id=clinic.organisation_id,
             user_id=u.user_id,
-            member_role=random.choice(["vet", "nurse"])
+            member_role=role
         ))
 
     session.add_all(members)
@@ -447,6 +500,44 @@ def seed_medications(session, pets: list[Pet]) -> int:
     return len(meds)
 
 
+def seed_staff_leave(session, clinics: list[Organisation], vet_users: list[User]) -> int:
+    if not vet_users:
+        return 0
+
+    member_rows = session.execute(
+        text(
+            """
+            SELECT organisation_id::text AS organisation_id, user_id::text AS user_id
+            FROM organisation_members
+            """
+        )
+    ).mappings().all()
+    if not member_rows:
+        return 0
+
+    now = datetime.now(UTC).date()
+    leaves: list[StaffLeave] = []
+    for row in random.sample(member_rows, k=min(20, len(member_rows))):
+        start_delta = random.randint(-15, 45)
+        duration = random.randint(1, 10)
+        start_date = now + timedelta(days=start_delta)
+        end_date = start_date + timedelta(days=duration)
+        status = "APPROVED" if start_delta <= 20 else "PENDING"
+        leaves.append(
+            StaffLeave(
+                organisation_id=uuid.UUID(row["organisation_id"]),
+                user_id=uuid.UUID(row["user_id"]),
+                start_date=start_date,
+                end_date=end_date,
+                reason=random.choice(["Annual leave", "Study leave", "Personal leave", "Conference"]),
+                status=status,
+            )
+        )
+    session.add_all(leaves)
+    session.commit()
+    return len(leaves)
+
+
 if __name__ == "__main__":
     session = SessionLocal()
     try:
@@ -454,6 +545,8 @@ if __name__ == "__main__":
         ensure_user_auth_columns(session)
         print("Ensuring pet health columns...")
         ensure_pet_health_columns(session)
+        print("Ensuring clinic profile columns...")
+        ensure_clinic_profile_columns(session)
         print("Ensuring risk/eligibility tables...")
         ensure_risk_tables(session)
 
@@ -488,10 +581,11 @@ if __name__ == "__main__":
         print("Seeding visits + weights + vaccinations...")
         visit_n, weight_n, vax_n = seed_visits_weights_vax(session, pets, clinics, vet_users)
         med_n = seed_medications(session, pets)
+        leave_n = seed_staff_leave(session, clinics, vet_users)
 
         print(
             f"Done. visits={visit_n}, weights={weight_n}, vaccinations={vax_n}, medications={med_n}, "
-            f"vet_guidelines={guideline_n}, owner_gov_profiles={gov_profile_n}"
+            f"staff_leave={leave_n}, vet_guidelines={guideline_n}, owner_gov_profiles={gov_profile_n}"
         )
         print("Generated unique passwords for all users in users.password")
         print(f"Credentials export: {creds_path}")
