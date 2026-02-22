@@ -217,14 +217,28 @@ That location is already correct in your project.
 ### Owner Experience
 
 ![Owner Dashboard](pet_check_screenshots/owner_page_example.png)
+![Owner Dashboard With Due Dates](pet_check_screenshots/owner_dashboard_with_due_dates.png)
+![Owner Dashboard With Scores](pet_check_screenshots/owner_dashboard_with_scores.png)
 ![Owner Add Pet](pet_check_screenshots/user_add_pet.png)
 ![Owner Weight Trend](pet_check_screenshots/owner_page_weight_trend.png)
 
 ### Vet and Admin Experience
 
 ![Vet Page](pet_check_screenshots/vet_page_example.png)
+![Vet Dashboard v2](pet_check_screenshots/vet_dashboard_v2.png)
+![Vet Clinic Page](pet_check_screenshots/vet_clinic_page.png)
+![Vet Owner Overview](pet_check_screenshots/vet_owner_overview.png)
+![Vet Pet Lookup](pet_check_screenshots/vet_pet_lookup.png)
+![Vet Staff Page](pet_check_screenshots/vet_staff_page.png)
 ![Admin Page](pet_check_screenshots/admin_page_example.png)
+![Admin Dashboard](pet_check_screenshots/admin_dashboard.png)
+![Admin Dashboard v2](pet_check_screenshots/admin_dashboard_v2.png)
 ![Admin Analytics](pet_check_screenshots/admin_analyics_page.png)
+![Admin Analytics Updated](pet_check_screenshots/pet_protect_admin_analytics.png)
+
+### Visits and Scheduling
+
+![Initial Vet Visits Page](pet_check_screenshots/inital_vet_visits_page.png)
 
 ### New User Example
 
