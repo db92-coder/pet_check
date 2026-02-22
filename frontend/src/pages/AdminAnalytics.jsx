@@ -10,10 +10,12 @@ import {
   MenuItem,
   Button,
   Divider,
+  Chip,
 } from "@mui/material";
 
 import { ResponsiveLine } from "@nivo/line";
 import { ResponsiveBar } from "@nivo/bar";
+import { ResponsivePie } from "@nivo/pie";
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -54,6 +56,10 @@ export default function AdminAnalytics() {
   const [vaccinationsByType, setVaccinationsByType] = useState([]);
   const [topOrgsByVisits, setTopOrgsByVisits] = useState([]);
   const [visitsByReason, setVisitsByReason] = useState([]);
+  const [eligibilityOwners, setEligibilityOwners] = useState([]);
+  const [selectedEligibilityOwnerId, setSelectedEligibilityOwnerId] = useState("");
+  const [eligibilityDetail, setEligibilityDetail] = useState(null);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
 
   const buildParams = () => {
     const params = {};
@@ -98,6 +104,54 @@ export default function AdminAnalytics() {
       cancelled = true;
     };
   }, [start, end, month, organisationId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadEligibilityOwners() {
+      try {
+        const res = await api.get("/eligibility/owners", { params: { limit: 100 } });
+        if (cancelled) return;
+        const rows = Array.isArray(res.data) ? res.data : [];
+        setEligibilityOwners(rows);
+        if (rows.length > 0 && !selectedEligibilityOwnerId) {
+          setSelectedEligibilityOwnerId(rows[0].owner_id);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        console.error("Eligibility owners load failed:", e);
+      }
+    }
+    loadEligibilityOwners();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadEligibilityDetail() {
+      if (!selectedEligibilityOwnerId) {
+        setEligibilityDetail(null);
+        return;
+      }
+      setEligibilityLoading(true);
+      try {
+        const res = await api.get(`/eligibility/owner/${selectedEligibilityOwnerId}`);
+        if (cancelled) return;
+        setEligibilityDetail(res.data || null);
+      } catch (e) {
+        if (cancelled) return;
+        console.error("Eligibility detail load failed:", e);
+        setEligibilityDetail(null);
+      } finally {
+        if (!cancelled) setEligibilityLoading(false);
+      }
+    }
+    loadEligibilityDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEligibilityOwnerId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +270,31 @@ export default function AdminAnalytics() {
 
   const hasCareLineData = careLineData.some((s) => Array.isArray(s.data) && s.data.length > 0);
 
+  const scoreMixPieData = useMemo(() => {
+    if (!eligibilityDetail) return [];
+    const vetContribution = toFiniteNumber(eligibilityDetail.vet_score) * 0.45;
+    const govContribution = toFiniteNumber(eligibilityDetail.gov_score) * 0.55;
+    return [
+      { id: "Vet contribution", label: "Vet contribution", value: Number(vetContribution.toFixed(2)) },
+      { id: "Govt contribution", label: "Govt contribution", value: Number(govContribution.toFixed(2)) },
+    ];
+  }, [eligibilityDetail]);
+
+  const annualCostBySpeciesPieData = useMemo(() => {
+    const pets = Array.isArray(eligibilityDetail?.pets) ? eligibilityDetail.pets : [];
+    const totals = new Map();
+    for (const p of pets) {
+      const key = p?.species || "Unknown";
+      const v = toFiniteNumber(p?.annual_min_cost);
+      totals.set(key, (totals.get(key) || 0) + v);
+    }
+    return Array.from(totals.entries()).map(([species, value]) => ({
+      id: species,
+      label: species,
+      value: Number(value.toFixed(2)),
+    }));
+  }, [eligibilityDetail]);
+
   return (
     <Box sx={{ p: 3 }}>
       <Stack spacing={2}>
@@ -326,6 +405,116 @@ export default function AdminAnalytics() {
 
             {loading && <Typography variant="body2">Loading...</Typography>}
             {error && <Typography variant="body2" color="error">{error}</Typography>}
+          </Stack>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Eligibility Overview (Vet + Govt)
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
+          <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center" sx={{ mb: 2 }}>
+            <TextField
+              select
+              label="Owner"
+              value={selectedEligibilityOwnerId}
+              onChange={(e) => setSelectedEligibilityOwnerId(e.target.value)}
+              sx={{ minWidth: 360 }}
+            >
+              {eligibilityOwners.length === 0 && (
+                <MenuItem value="" disabled>
+                  No owners available
+                </MenuItem>
+              )}
+              {eligibilityOwners.map((o) => (
+                <MenuItem key={o.owner_id} value={o.owner_id}>
+                  {(o.owner_name || o.owner_email || o.owner_id) + ` (${o.owner_email || "no-email"})`}
+                </MenuItem>
+              ))}
+            </TextField>
+            {eligibilityDetail && (
+              <>
+                <Chip label={`Overall: ${toFiniteNumber(eligibilityDetail.overall_eligibility_score).toFixed(2)}`} color="primary" />
+                <Chip label={`Risk: ${eligibilityDetail.risk_level || "-"}`} color={eligibilityDetail.risk_level === "HIGH" ? "error" : eligibilityDetail.risk_level === "MEDIUM" ? "warning" : "success"} />
+                <Chip label={`Pets: ${eligibilityDetail.pet_count || 0}`} variant="outlined" />
+              </>
+            )}
+            {eligibilityLoading && <Typography variant="body2">Loading eligibility...</Typography>}
+          </Stack>
+
+          <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Score Composition (Weighted)
+              </Typography>
+              <Box sx={{ height: 320 }}>
+                {scoreMixPieData.length > 0 ? (
+                  <ResponsivePie
+                    data={scoreMixPieData}
+                    margin={{ top: 20, right: 20, bottom: 80, left: 20 }}
+                    innerRadius={0.55}
+                    padAngle={1}
+                    cornerRadius={4}
+                    activeOuterRadiusOffset={8}
+                    arcLabelsSkipAngle={10}
+                    arcLabelsTextColor="#fff"
+                    legends={[
+                      {
+                        anchor: "bottom",
+                        direction: "row",
+                        justify: false,
+                        translateY: 52,
+                        itemWidth: 150,
+                        itemHeight: 18,
+                        symbolSize: 12,
+                        symbolShape: "circle",
+                      },
+                    ]}
+                  />
+                ) : (
+                  <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                    Select an owner to view score composition.
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Annual Min Care Cost by Species
+              </Typography>
+              <Box sx={{ height: 320 }}>
+                {annualCostBySpeciesPieData.length > 0 ? (
+                  <ResponsivePie
+                    data={annualCostBySpeciesPieData}
+                    margin={{ top: 20, right: 20, bottom: 80, left: 20 }}
+                    innerRadius={0.45}
+                    padAngle={1}
+                    cornerRadius={4}
+                    activeOuterRadiusOffset={8}
+                    arcLabelsSkipAngle={10}
+                    arcLabelsTextColor="#fff"
+                    valueFormat=">-.2f"
+                    legends={[
+                      {
+                        anchor: "bottom",
+                        direction: "row",
+                        justify: false,
+                        translateY: 52,
+                        itemWidth: 120,
+                        itemHeight: 18,
+                        symbolSize: 12,
+                        symbolShape: "circle",
+                      },
+                    ]}
+                  />
+                ) : (
+                  <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                    No species cost data for selected owner.
+                  </Typography>
+                )}
+              </Box>
+            </Box>
           </Stack>
         </Paper>
 
