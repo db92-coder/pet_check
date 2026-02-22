@@ -1,6 +1,7 @@
 """Module: visits."""
 
-from datetime import date, datetime
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -107,28 +108,49 @@ def visits_calendar_summary(
     organisation_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    params = {"month": month, "org": organisation_id}
-    q = text(
-        """
-      SELECT
-        to_char(date_trunc('day', vv.visit_datetime), 'YYYY-MM-DD') AS day,
-        COUNT(*)::int AS total_visits,
-        SUM(
-          CASE
-            WHEN LOWER(COALESCE(vv.reason, '')) LIKE '%cancel%'
-              OR LOWER(COALESCE(vv.reason, '')) LIKE '%no show%'
-              OR LOWER(COALESCE(vv.reason, '')) LIKE '%did not attend%'
-            THEN 1 ELSE 0
-          END
-        )::int AS cancelled_or_missed
-      FROM vet_visits vv
-      WHERE to_char(date_trunc('month', vv.visit_datetime), 'YYYY-MM') = :month
-        AND (:org IS NULL OR vv.organisation_id::text = :org)
-      GROUP BY 1
-      ORDER BY 1
-    """
+    # Parse YYYY-MM safely and compute month bounds in Python to stay DB-agnostic.
+    try:
+        month_start = datetime.strptime(f"{month}-01", "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid month format (expected YYYY-MM)")
+
+    if month_start.month == 12:
+        month_end = datetime(month_start.year + 1, 1, 1)
+    else:
+        month_end = datetime(month_start.year, month_start.month + 1, 1)
+
+    stmt = select(VetVisit.visit_datetime, VetVisit.reason).where(
+        VetVisit.visit_datetime >= month_start,
+        VetVisit.visit_datetime < month_end,
     )
-    return list(db.execute(q, params).mappings().all())
+    if organisation_id:
+        oid = _parse_uuid(organisation_id, "organisation_id")
+        stmt = stmt.where(VetVisit.organisation_id == oid)
+
+    rows = db.execute(stmt).all()
+
+    # Aggregate per-day in Python for consistent behavior across Postgres/SQLite.
+    day_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"total_visits": 0, "cancelled_or_missed": 0})
+    for visit_datetime, reason in rows:
+        if visit_datetime is None:
+            continue
+        day_key = visit_datetime.date().isoformat()
+        day_counts[day_key]["total_visits"] += 1
+
+        reason_text = (reason or "").lower()
+        if ("cancel" in reason_text) or ("no show" in reason_text) or ("did not attend" in reason_text):
+            day_counts[day_key]["cancelled_or_missed"] += 1
+
+    out = []
+    for day in sorted(day_counts.keys()):
+        out.append(
+            {
+                "day": day,
+                "total_visits": int(day_counts[day]["total_visits"]),
+                "cancelled_or_missed": int(day_counts[day]["cancelled_or_missed"]),
+            }
+        )
+    return out
 
 
 @router.post("", summary="Create a visit")

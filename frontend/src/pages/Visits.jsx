@@ -216,16 +216,27 @@ export default function Visits() {
                   <ListItem
                     key={v.id}
                     disableGutters
+                    alignItems="flex-start"
+                    sx={{ py: 0.75 }}
                     secondaryAction={
-                      <Stack direction="row" spacing={1}>
+                      <Stack direction="row" spacing={1} sx={{ top: 12 }}>
                         <Button size="small" onClick={() => openPetProfile(v.pet_id)}>Pet Profile</Button>
                         <Button size="small" color="error" onClick={() => cancelVisit(v.id)}>Cancel</Button>
                       </Stack>
                     }
                   >
                     <ListItemText
+                      sx={{ pr: 24 }}
                       primary={`${v.pet_name || "Unknown pet"} - ${v.reason || "General check"}`}
                       secondary={`${formatDateTime(v.visit_datetime)} | Clinic: ${v.clinic_name || "-"} | Owner: ${v.owner_full_name || "-"} (${v.owner_email || "-"})`}
+                      slotProps={{
+                        secondary: {
+                          sx: {
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                          },
+                        },
+                      }}
                     />
                   </ListItem>
                 ))}
