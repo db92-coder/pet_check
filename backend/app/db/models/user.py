@@ -1,3 +1,5 @@
+"""Module: user."""
+
 import uuid
 from sqlalchemy import String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
@@ -26,3 +28,4 @@ class User(Base):
         DateTime,
         default=datetime.utcnow
     )
+

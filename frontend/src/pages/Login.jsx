@@ -1,3 +1,5 @@
+/* Module: Login. */
+
 import React from "react";
 import { Box, Button, TextField, Typography, Alert, Paper, Stack, ToggleButton, ToggleButtonGroup } from "@mui/material";
 import { useAuth } from "../auth/AuthContext";
@@ -136,3 +138,4 @@ export default function Login() {
     </Box>
   );
 }
+

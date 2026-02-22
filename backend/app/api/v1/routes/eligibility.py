@@ -1,3 +1,5 @@
+"""Module: eligibility."""
+
 from __future__ import annotations
 
 import uuid
@@ -280,3 +282,4 @@ def eligibility_leaderboard(limit: int = Query(50, ge=1, le=200), db: Session = 
 
     results.sort(key=lambda r: r["overall_eligibility_score"], reverse=True)
     return results[:limit]
+

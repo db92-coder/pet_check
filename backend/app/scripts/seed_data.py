@@ -1,3 +1,5 @@
+"""Module: seed_data."""
+
 from faker import Faker
 import random
 import string
@@ -5,7 +7,7 @@ import csv
 import uuid
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.db.session import SessionLocal
 
@@ -23,12 +25,16 @@ from app.db.models.medication import Medication
 from app.db.models.vet_cost_guideline import VetCostGuideline
 from app.db.models.owner_gov_profile import OwnerGovProfile
 from app.db.models.staff_leave import StaffLeave
+from app.db.models.vet_practice import VetPractice
+from app.db.models.practice_staff import PracticeStaff
+from app.db.models.practice_staff_source import PracticeStaffSource
 
 fake = Faker()
 
 DOG_VAX = ["C5", "C3", "Rabies"]
 CAT_VAX = ["F3", "FIV", "Rabies"]
 
+# Shared helpers used by multiple seed builders.
 def generate_password(length: int = 12) -> str:
     chars = string.ascii_letters + string.digits
     return "".join(random.choice(chars) for _ in range(length))
@@ -37,6 +43,25 @@ def generate_password(length: int = 12) -> str:
 def generate_au_mobile() -> str:
     # Australian mobile format: 04 + 8 digits
     return "04" + "".join(random.choice(string.digits) for _ in range(8))
+
+
+def _slugify_practice_domain(value: str) -> str:
+    cleaned = "".join(ch.lower() if ch.isalnum() else "-" for ch in value)
+    while "--" in cleaned:
+        cleaned = cleaned.replace("--", "-")
+    cleaned = cleaned.strip("-")
+    return cleaned or "vet-practice"
+
+
+def _unique_staff_email(first_name: str, last_name: str, clinic_domain: str, used: set[str]) -> str:
+    base = f"{first_name.lower()}.{last_name.lower()}@{clinic_domain}.com.au"
+    email = base
+    n = 2
+    while email in used:
+        email = f"{first_name.lower()}.{last_name.lower()}{n}@{clinic_domain}.com.au"
+        n += 1
+    used.add(email)
+    return email
 
 
 def ensure_user_auth_columns(session) -> None:
@@ -53,6 +78,7 @@ def ensure_user_auth_columns(session) -> None:
 
 
 def ensure_pet_health_columns(session) -> None:
+    # Backfill health-related columns/tables introduced after initial schema.
     session.execute(text("ALTER TABLE pets ADD COLUMN IF NOT EXISTS microchip_number VARCHAR;"))
     session.execute(text("CREATE TABLE IF NOT EXISTS medications ("
                          "medication_id UUID PRIMARY KEY,"
@@ -67,6 +93,7 @@ def ensure_pet_health_columns(session) -> None:
 
 
 def ensure_clinic_profile_columns(session) -> None:
+    # Backfill clinic profile and staff/vet snapshot tables for local dev startup.
     session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS phone VARCHAR;"))
     session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS email VARCHAR;"))
     session.execute(text("ALTER TABLE organisations ADD COLUMN IF NOT EXISTS address VARCHAR;"))
@@ -91,10 +118,97 @@ def ensure_clinic_profile_columns(session) -> None:
             """
         )
     )
+    session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS vet_practices (
+                id UUID PRIMARY KEY,
+                source_key VARCHAR NOT NULL UNIQUE,
+                source VARCHAR,
+                name VARCHAR NOT NULL,
+                abn VARCHAR,
+                practice_type VARCHAR,
+                phone VARCHAR,
+                email VARCHAR,
+                website VARCHAR,
+                facebook_url VARCHAR,
+                instagram_url VARCHAR,
+                street_address VARCHAR,
+                suburb VARCHAR,
+                state VARCHAR,
+                postcode VARCHAR,
+                latitude NUMERIC(9,6),
+                longitude NUMERIC(9,6),
+                service_types TEXT[],
+                opening_hours_text VARCHAR,
+                opening_hours_json VARCHAR,
+                after_hours_available BOOLEAN,
+                after_hours_notes VARCHAR,
+                emergency_referral VARCHAR,
+                rating NUMERIC(3,2),
+                review_count INTEGER,
+                scraped_at TIMESTAMPTZ NOT NULL
+            );
+            """
+        )
+    )
+    session.execute(text("CREATE INDEX IF NOT EXISTS idx_vet_practices_suburb_postcode ON vet_practices (suburb, postcode);"))
+    session.execute(text("CREATE INDEX IF NOT EXISTS idx_vet_practices_rating ON vet_practices (rating);"))
+    session.execute(text("CREATE INDEX IF NOT EXISTS idx_vet_practices_service_types_gin ON vet_practices USING GIN (service_types);"))
+    session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS practice_staff (
+                id UUID PRIMARY KEY,
+                practice_id UUID NOT NULL REFERENCES vet_practices(id) ON DELETE CASCADE,
+                staff_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                role_raw TEXT,
+                bio TEXT,
+                profile_image_url TEXT,
+                source_url TEXT NOT NULL,
+                scraped_at TIMESTAMPTZ NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE
+            );
+            """
+        )
+    )
+    session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS practice_staff_sources (
+                id UUID PRIMARY KEY,
+                practice_id UUID NOT NULL REFERENCES vet_practices(id) ON DELETE CASCADE,
+                source_url TEXT NOT NULL,
+                http_status INTEGER,
+                last_scraped_at TIMESTAMPTZ NOT NULL,
+                parse_success BOOLEAN NOT NULL DEFAULT FALSE,
+                notes TEXT
+            );
+            """
+        )
+    )
+    session.execute(
+        text(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_practice_staff_identity
+            ON practice_staff (practice_id, staff_name, role, source_url);
+            """
+        )
+    )
+    session.execute(
+        text(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_practice_staff_sources_lookup
+            ON practice_staff_sources (practice_id, source_url);
+            """
+        )
+    )
     session.commit()
 
 
 def ensure_risk_tables(session) -> None:
+    # Government + vet cost scoring inputs for eligibility calculations.
     session.execute(
         text(
             """
@@ -151,9 +265,13 @@ def export_credentials(users: list[User]) -> Path:
 
 
 def reset_db(session) -> None:
+    # Keep reset order explicit so FK dependencies truncate cleanly.
     session.execute(text("""
         TRUNCATE TABLE
           staff_leaves,
+          practice_staff_sources,
+          practice_staff,
+          vet_practices,
           owner_gov_profiles,
           vet_cost_guidelines,
           medications,
@@ -215,6 +333,7 @@ def _fake_ato_ref() -> str:
 
 
 def seed_owner_gov_profiles(session, owners: list[Owner]) -> int:
+    # Generate financially varied profiles to exercise eligibility scoring ranges.
     rows: list[OwnerGovProfile] = []
     for owner in owners:
         taxable_income = random.randint(28000, 180000)
@@ -256,6 +375,7 @@ def seed_owner_gov_profiles(session, owners: list[Owner]) -> int:
 
 
 def seed_users(session, n: int = 200) -> list[User]:
+    # Base user population across OWNER/VET/ADMIN roles.
     users: list[User] = []
     for _ in range(n):
         role = random.choices(
@@ -277,6 +397,7 @@ def seed_users(session, n: int = 200) -> list[User]:
 
 
 def seed_owners(session, users: list[User]) -> list[Owner]:
+    # OWNER records are derived from users rather than generated independently.
     owners: list[Owner] = []
     for u in users:
         if (u.role or "").upper() != "OWNER":
@@ -334,6 +455,7 @@ MEDICATION_POOL = [
 
 
 def seed_pets(session, n: int = 400) -> list[Pet]:
+    # Build a mixed dog/cat population with realistic breed distribution.
     pets: list[Pet] = []
 
     for _ in range(n):
@@ -355,6 +477,7 @@ def seed_pets(session, n: int = 400) -> list[Pet]:
 
 
 def seed_owner_pets(session, owners: list[Owner], pets: list[Pet]) -> int:
+    # Current model assigns one primary owner per pet for deterministic joins.
     links: list[OwnerPet] = []
     for p in pets:
         o = random.choice(owners)
@@ -368,6 +491,325 @@ def seed_owner_pets(session, owners: list[Owner], pets: list[Pet]) -> int:
     session.add_all(links)
     session.commit()
     return len(links)
+
+
+def _vet_gateway_csv_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "services" / "vet_gateway" / "tas_vet_practices_enriched_partial.csv"
+
+
+def _vet_staff_snapshot_csv_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "services" / "vet_gateway" / "tas_practice_staff_snapshot.csv"
+
+
+def _parse_optional_float(value: str | None) -> float | None:
+    if value is None:
+        return None
+    v = str(value).strip()
+    if not v:
+        return None
+    try:
+        return float(v)
+    except ValueError:
+        return None
+
+
+def _parse_optional_int(value: str | None) -> int | None:
+    if value is None:
+        return None
+    v = str(value).strip()
+    if not v:
+        return None
+    try:
+        return int(v)
+    except ValueError:
+        return None
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    v = str(value).strip()
+    return v or None
+
+
+def _normalize_whitespace(value: str | None) -> str | None:
+    text_value = _normalize_optional_text(value)
+    if not text_value:
+        return None
+    return " ".join(text_value.split())
+
+
+def _normalize_role(value: str | None) -> tuple[str | None, str | None]:
+    role_raw = _normalize_whitespace(value)
+    if not role_raw:
+        return None, None
+    normalized = role_raw.lower()
+    if any(token in normalized for token in ["veterinarian", "vet ", "veterinary surgeon"]):
+        return "Veterinarian", role_raw
+    if "nurse" in normalized:
+        return "Vet Nurse", role_raw
+    if "manager" in normalized:
+        return "Practice Manager", role_raw
+    if any(token in normalized for token in ["reception", "client care"]):
+        return "Reception/Client Care", role_raw
+    return role_raw.title(), role_raw
+
+
+def _parse_optional_bool(value: str | None) -> bool | None:
+    raw = _normalize_optional_text(value)
+    if raw is None:
+        return None
+    normalized = raw.lower()
+    if normalized in {"1", "true", "yes", "y"}:
+        return True
+    if normalized in {"0", "false", "no", "n"}:
+        return False
+    return None
+
+
+def _parse_after_hours(value: str | None) -> tuple[bool | None, str | None]:
+    raw = _normalize_optional_text(value)
+    if not raw:
+        return None, None
+    val = raw.lower()
+    if val.startswith("yes"):
+        return True, raw
+    if val.startswith("no"):
+        return False, raw
+    return None, raw
+
+
+def _infer_practice_type(service_types: list[str], emergency_text: str | None) -> str:
+    svc = " ".join(service_types).lower()
+    em = (emergency_text or "").lower()
+    if "emergency" in svc or "emergency" in em:
+        return "emergency"
+    if "mobile" in svc:
+        return "mobile"
+    if "special" in svc:
+        return "specialist"
+    if "hospital" in svc:
+        return "hospital"
+    return "clinic"
+
+
+def _staff_guardrail_check(
+    source_url: str | None,
+    source_type: str | None,
+    is_publicly_listed: bool | None,
+) -> tuple[bool, str | None]:
+    if not source_url:
+        return False, "missing source_url"
+    url_lower = source_url.lower()
+    if "linkedin.com" in url_lower:
+        return False, "linkedin sources are blocked"
+    if source_type and source_type.lower() not in {"practice_website", "official_website"}:
+        return False, "source_type is not a practice website"
+    if is_publicly_listed is False:
+        return False, "row not marked as publicly listed"
+    return True, None
+
+
+def seed_vet_practices_and_clinics_from_tas_data(session) -> tuple[list[Organisation], list[VetPractice], int]:
+    # Ingest Tasmania real-world snapshot and keep both vet_practices + organisations in sync.
+    csv_path = _vet_gateway_csv_path()
+    if not csv_path.exists():
+        print(f"TAS vet dataset not found at {csv_path}, falling back to synthetic clinics.")
+        fallback_clinics = seed_clinics(session, 5)
+        return fallback_clinics, [], 0
+
+    practices: list[VetPractice] = []
+    clinics: list[Organisation] = []
+
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            name = _normalize_optional_text(row.get("name"))
+            if not name:
+                continue
+            address = _normalize_optional_text(row.get("address"))
+            suburb = _normalize_optional_text(row.get("suburb"))
+            state = _normalize_optional_text(row.get("state")) or "TAS"
+            postcode = _normalize_optional_text(row.get("postcode"))
+            phone = _normalize_optional_text(row.get("phone"))
+            website = _normalize_optional_text(row.get("website"))
+            email = _normalize_optional_text(row.get("email"))
+            facebook = _normalize_optional_text(row.get("facebook"))
+            instagram = _normalize_optional_text(row.get("instagram"))
+            emergency = _normalize_optional_text(row.get("emergency"))
+            opening_hours = _normalize_optional_text(row.get("opening_hours"))
+            service_types = [s.strip() for s in (row.get("service_types") or "").split(";") if s.strip()]
+            after_hours_available, after_hours_notes = _parse_after_hours(row.get("after_hours"))
+            source = _normalize_optional_text(row.get("source"))
+
+            lat = _parse_optional_float(row.get("latitude"))
+            lng = _parse_optional_float(row.get("longitude"))
+            rating = _parse_optional_float(row.get("rating"))
+            review_count = _parse_optional_int(row.get("review_count"))
+
+            scraped_raw = _normalize_optional_text(row.get("scraped_at")) or datetime.now(UTC).isoformat()
+            try:
+                scraped_at = datetime.fromisoformat(scraped_raw.replace("Z", "+00:00"))
+            except Exception:
+                scraped_at = datetime.now(UTC)
+
+            source_key = "|".join([(name or "").lower(), (address or "").lower(), (postcode or "").lower(), (source or "").lower()])
+            practice_type = _infer_practice_type(service_types, emergency)
+
+            practices.append(
+                VetPractice(
+                    source_key=source_key,
+                    source=source,
+                    name=name,
+                    abn=None,
+                    practice_type=practice_type,
+                    phone=phone,
+                    email=email,
+                    website=website,
+                    facebook_url=facebook,
+                    instagram_url=instagram,
+                    street_address=address,
+                    suburb=suburb,
+                    state=state,
+                    postcode=postcode,
+                    latitude=lat,
+                    longitude=lng,
+                    service_types=service_types or None,
+                    opening_hours_text=opening_hours,
+                    opening_hours_json=None,
+                    after_hours_available=after_hours_available,
+                    after_hours_notes=after_hours_notes,
+                    emergency_referral=emergency,
+                    rating=rating,
+                    review_count=review_count,
+                    scraped_at=scraped_at,
+                )
+            )
+
+            clinics.append(
+                Organisation(
+                    name=name,
+                    org_type="vet_clinic",
+                    phone=phone,
+                    email=email,
+                    address=address,
+                    suburb=suburb,
+                    state=state,
+                    postcode=postcode,
+                    latitude=str(lat) if lat is not None else None,
+                    longitude=str(lng) if lng is not None else None,
+                )
+            )
+
+    session.add_all(practices)
+    session.add_all(clinics)
+    session.commit()
+    return clinics, practices, len(practices)
+
+
+def seed_practice_staff_from_snapshot(session, practices: list[VetPractice]) -> tuple[int, int]:
+    """
+    Load staff snapshots from vetted practice website sources only.
+
+    Expected CSV columns:
+      - practice_name, practice_address, practice_postcode
+      - staff_name, role, bio, profile_image_url
+      - source_url, source_type, is_publicly_listed
+      - scraped_at, http_status
+    """
+    csv_path = _vet_staff_snapshot_csv_path()
+    if not csv_path.exists():
+        return 0, 0
+
+    practice_index: dict[str, VetPractice] = {}
+    for practice in practices:
+        key = "|".join(
+            [
+                (practice.name or "").strip().lower(),
+                (practice.street_address or "").strip().lower(),
+                (practice.postcode or "").strip().lower(),
+            ]
+        )
+        practice_index[key] = practice
+
+    staff_rows: list[PracticeStaff] = []
+    source_rows: list[PracticeStaffSource] = []
+    seen_staff_keys: set[tuple[str, str, str, str]] = set()
+    seen_source_keys: set[tuple[str, str]] = set()
+
+    # Guardrails are enforced per-row before staff records are admitted.
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            practice_name = _normalize_whitespace(row.get("practice_name") or row.get("name"))
+            practice_address = _normalize_whitespace(row.get("practice_address") or row.get("address")) or ""
+            practice_postcode = _normalize_whitespace(row.get("practice_postcode") or row.get("postcode")) or ""
+            if not practice_name:
+                continue
+
+            practice_key = "|".join([practice_name.lower(), practice_address.lower(), practice_postcode.lower()])
+            practice = practice_index.get(practice_key)
+            if not practice:
+                continue
+
+            source_url = _normalize_optional_text(row.get("source_url"))
+            source_type = _normalize_optional_text(row.get("source_type"))
+            is_publicly_listed = _parse_optional_bool(row.get("is_publicly_listed"))
+            allowed, note = _staff_guardrail_check(source_url, source_type, is_publicly_listed)
+
+            scraped_raw = _normalize_optional_text(row.get("scraped_at")) or datetime.now(UTC).isoformat()
+            try:
+                scraped_at = datetime.fromisoformat(scraped_raw.replace("Z", "+00:00"))
+            except Exception:
+                scraped_at = datetime.now(UTC)
+
+            source_key = (str(practice.id), source_url or "")
+            if source_key not in seen_source_keys:
+                source_rows.append(
+                    PracticeStaffSource(
+                        practice_id=practice.id,
+                        source_url=source_url or "missing",
+                        http_status=_parse_optional_int(row.get("http_status")),
+                        last_scraped_at=scraped_at,
+                        parse_success=bool(allowed),
+                        notes=note,
+                    )
+                )
+                seen_source_keys.add(source_key)
+
+            if not allowed:
+                continue
+
+            staff_name = _normalize_whitespace(row.get("staff_name"))
+            role, role_raw = _normalize_role(row.get("role"))
+            if not staff_name or not role or not source_url:
+                continue
+
+            staff_key = (str(practice.id), staff_name.lower(), role.lower(), source_url.lower())
+            if staff_key in seen_staff_keys:
+                continue
+
+            staff_rows.append(
+                PracticeStaff(
+                    practice_id=practice.id,
+                    staff_name=staff_name,
+                    role=role,
+                    role_raw=role_raw,
+                    bio=_normalize_optional_text(row.get("bio")),
+                    profile_image_url=_normalize_optional_text(row.get("profile_image_url")),
+                    source_url=source_url,
+                    scraped_at=scraped_at,
+                    is_active=True,
+                )
+            )
+            seen_staff_keys.add(staff_key)
+
+    if source_rows:
+        session.add_all(source_rows)
+    if staff_rows:
+        session.add_all(staff_rows)
+    session.commit()
+    return len(staff_rows), len(source_rows)
 
 
 def seed_clinics(session, n: int = 5) -> list[Organisation]:
@@ -396,33 +838,85 @@ def seed_clinics(session, n: int = 5) -> list[Organisation]:
     return clinics
 
 
-def seed_vet_staff(session, users: list[User], clinics: list[Organisation], n_vets: int = 25) -> list[User]:
-    eligible = [u for u in users if (u.role or "").upper() == "VET"]
-    if not eligible:
-        return []
+def seed_vet_staff(session, clinics: list[Organisation]) -> list[User]:
+    """
+    Generate clinic staff per clinic with realistic role mix and contact details.
 
-    vet_users = random.sample(eligible, k=min(n_vets, len(eligible)))
+    Staff counts by clinic size bucket:
+      - small: 8-12
+      - medium: 12-18
+      - large: 18-24
+    """
+    created_users: list[User] = []
     members: list[OrganisationMember] = []
+    vet_users_for_visits: list[User] = []
 
-    clinic_has_manager: dict[str, bool] = {str(c.organisation_id): False for c in clinics}
+    existing_emails = {
+        e
+        for e in session.execute(select(User.email)).scalars().all()
+        if e
+    }
 
-    for u in vet_users:
-        clinic = random.choice(clinics)
-        cid = str(clinic.organisation_id)
-        role = "manager" if not clinic_has_manager[cid] else random.choice(["vet", "nurse"])
-        clinic_has_manager[cid] = True
-        members.append(OrganisationMember(
-            organisation_id=clinic.organisation_id,
-            user_id=u.user_id,
-            member_role=role
-        ))
+    for clinic in clinics:
+        # Size buckets emulate realistic staffing scales per clinic.
+        size_bucket = random.choices(["small", "medium", "large"], weights=[0.5, 0.35, 0.15], k=1)[0]
+        if size_bucket == "small":
+            staff_total = random.randint(8, 12)
+        elif size_bucket == "medium":
+            staff_total = random.randint(12, 18)
+        else:
+            staff_total = random.randint(18, 24)
+
+        admin_count = random.randint(1, min(4, max(1, staff_total // 4)))
+        senior_vet_count = random.randint(1, 3 if size_bucket != "small" else 2)
+        remaining = max(0, staff_total - admin_count - senior_vet_count)
+        vet_tech_count = random.randint(1, min(4, remaining)) if remaining > 0 else 0
+        veterinarian_count = max(1, staff_total - admin_count - senior_vet_count - vet_tech_count)
+
+        role_plan = (
+            [("admin_staff", "ADMIN")] * admin_count
+            + [("senior_veterinarian", "VET")] * senior_vet_count
+            + [("veterinarian", "VET")] * veterinarian_count
+            + [("vet_tech", "VET")] * vet_tech_count
+        )
+        random.shuffle(role_plan)
+
+        clinic_domain = _slugify_practice_domain(clinic.name or "vet-practice")
+
+        for member_role, app_role in role_plan:
+            # Staff emails follow firstname.lastname@<clinic-domain>.com.au.
+            first = fake.first_name()
+            last = fake.last_name()
+            email = _unique_staff_email(first, last, clinic_domain, existing_emails)
+            user = User(
+                email=email,
+                password=generate_password(),
+                role=app_role,
+                full_name=f"{first} {last}",
+                phone=generate_au_mobile(),
+                address=(clinic.address or "Clinic Address"),
+            )
+            created_users.append(user)
+            session.add(user)
+            session.flush()
+
+            members.append(
+                OrganisationMember(
+                    organisation_id=clinic.organisation_id,
+                    user_id=user.user_id,
+                    member_role=member_role,
+                )
+            )
+            if member_role in {"veterinarian", "senior_veterinarian"}:
+                vet_users_for_visits.append(user)
 
     session.add_all(members)
     session.commit()
-    return vet_users
+    return vet_users_for_visits
 
 
 def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation], vet_users: list[User]) -> tuple[int, int, int]:
+    # Visits drive downstream synthetic weights/vaccinations to keep dashboards populated.
     visits: list[VetVisit] = []
     weights: list[Weight] = []
     vax: list[Vaccination] = []
@@ -501,13 +995,10 @@ def seed_medications(session, pets: list[Pet]) -> int:
 
 
 def seed_staff_leave(session, clinics: list[Organisation], vet_users: list[User]) -> int:
-    if not vet_users:
-        return 0
-
     member_rows = session.execute(
         text(
             """
-            SELECT organisation_id::text AS organisation_id, user_id::text AS user_id
+            SELECT organisation_id::text AS organisation_id, user_id::text AS user_id, member_role
             FROM organisation_members
             """
         )
@@ -517,12 +1008,32 @@ def seed_staff_leave(session, clinics: list[Organisation], vet_users: list[User]
 
     now = datetime.now(UTC).date()
     leaves: list[StaffLeave] = []
-    for row in random.sample(member_rows, k=min(20, len(member_rows))):
-        start_delta = random.randint(-15, 45)
+    sample_size = min(max(30, len(member_rows) // 3), len(member_rows))
+    for row in random.sample(member_rows, k=sample_size):
+        # Ensure we generate a mix of historical, current, and future leave states.
+        pattern = random.choices(
+            ["past", "current", "upcoming_approved", "upcoming_pending"],
+            weights=[0.35, 0.2, 0.25, 0.2],
+            k=1,
+        )[0]
         duration = random.randint(1, 10)
-        start_date = now + timedelta(days=start_delta)
-        end_date = start_date + timedelta(days=duration)
-        status = "APPROVED" if start_delta <= 20 else "PENDING"
+        if pattern == "past":
+            end_date = now - timedelta(days=random.randint(5, 120))
+            start_date = end_date - timedelta(days=duration)
+            status = "APPROVED"
+        elif pattern == "current":
+            start_date = now - timedelta(days=random.randint(0, 4))
+            end_date = now + timedelta(days=random.randint(1, 8))
+            status = "APPROVED"
+        elif pattern == "upcoming_approved":
+            start_date = now + timedelta(days=random.randint(2, 45))
+            end_date = start_date + timedelta(days=duration)
+            status = "APPROVED"
+        else:
+            start_date = now + timedelta(days=random.randint(3, 60))
+            end_date = start_date + timedelta(days=duration)
+            status = "PENDING"
+
         leaves.append(
             StaffLeave(
                 organisation_id=uuid.UUID(row["organisation_id"]),
@@ -539,6 +1050,7 @@ def seed_staff_leave(session, clinics: list[Organisation], vet_users: list[User]
 
 
 if __name__ == "__main__":
+    # Full reseed pipeline used by docker exec -it petcheck_backend python -m app.scripts.seed_data
     session = SessionLocal()
     try:
         print("Ensuring users auth columns...")
@@ -555,7 +1067,6 @@ if __name__ == "__main__":
 
         print("Seeding users (200)...")
         users = seed_users(session, 200)
-        creds_path = export_credentials(users)
 
         print("Seeding owners (200)...")
         owners = seed_owners(session, users)
@@ -573,21 +1084,29 @@ if __name__ == "__main__":
         seed_owner_pets(session, owners, pets)
 
         print("Seeding clinics (5)...")
-        clinics = seed_clinics(session, 5)
+        clinics, practices, practice_n = seed_vet_practices_and_clinics_from_tas_data(session)
 
-        print("Seeding vet staff (25)...")
-        vet_users = seed_vet_staff(session, users, clinics, 25)
+        print("Seeding practice staff snapshot (if available)...")
+        practice_staff_n, practice_staff_source_n = seed_practice_staff_from_snapshot(session, practices)
+
+        print("Seeding vet staff (size-based by clinic)...")
+        vet_users = seed_vet_staff(session, clinics)
 
         print("Seeding visits + weights + vaccinations...")
         visit_n, weight_n, vax_n = seed_visits_weights_vax(session, pets, clinics, vet_users)
         med_n = seed_medications(session, pets)
         leave_n = seed_staff_leave(session, clinics, vet_users)
 
+        all_users = session.execute(select(User)).scalars().all()
+        creds_path = export_credentials(all_users)
+
         print(
             f"Done. visits={visit_n}, weights={weight_n}, vaccinations={vax_n}, medications={med_n}, "
-            f"staff_leave={leave_n}, vet_guidelines={guideline_n}, owner_gov_profiles={gov_profile_n}"
+            f"staff_leave={leave_n}, vet_practices={practice_n}, practice_staff={practice_staff_n}, "
+            f"practice_staff_sources={practice_staff_source_n}, vet_guidelines={guideline_n}, owner_gov_profiles={gov_profile_n}"
         )
         print("Generated unique passwords for all users in users.password")
         print(f"Credentials export: {creds_path}")
     finally:
         session.close()
+

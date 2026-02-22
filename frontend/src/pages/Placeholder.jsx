@@ -1,3 +1,5 @@
+/* Module: Placeholder. */
+
 import React from "react";
 import { Paper, Typography } from "@mui/material";
 
@@ -11,3 +13,4 @@ export default function Placeholder({ title }) {
     </Paper>
   );
 }
+

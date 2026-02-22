@@ -1,3 +1,5 @@
+"""Module: owners."""
+
 import uuid
 from datetime import datetime, timedelta, UTC
 
@@ -113,3 +115,4 @@ def list_owner_pets(owner_id: str, db: Session = Depends(get_db)):
         d["id"] = str(d["id"])
         out.append(d)
     return out
+

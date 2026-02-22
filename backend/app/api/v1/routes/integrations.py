@@ -1,3 +1,5 @@
+"""Module: integrations."""
+
 from fastapi import APIRouter
 import httpx
 import os

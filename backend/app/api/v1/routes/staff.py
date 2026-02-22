@@ -1,3 +1,5 @@
+"""Module: staff."""
+
 from __future__ import annotations
 
 import uuid
@@ -39,17 +41,32 @@ def staff_dashboard(
     db: Session = Depends(get_db),
 ):
     uid = _parse_uuid(user_id, "user_id")
+    user = db.execute(select(User).where(User.user_id == uid)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    is_admin = (user.role or "").upper() == "ADMIN"
 
-    clinic_ids = [
+    member_clinic_ids = [
         row.organisation_id
         for row in db.execute(
             select(OrganisationMember.organisation_id).where(OrganisationMember.user_id == uid)
         ).scalars().all()
     ]
+    if is_admin:
+        allowed_clinic_ids = db.execute(
+            select(Organisation.organisation_id).where(Organisation.org_type == "vet_clinic")
+        ).scalars().all()
+    else:
+        allowed_clinic_ids = member_clinic_ids
+
+    clinic_ids = list(allowed_clinic_ids)
+
     if organisation_id:
         req_cid = _parse_uuid(organisation_id, "organisation_id")
-        if req_cid not in clinic_ids:
+        if (not is_admin) and req_cid not in member_clinic_ids:
             raise HTTPException(status_code=403, detail="User is not a member of requested clinic")
+        if is_admin and req_cid not in allowed_clinic_ids:
+            raise HTTPException(status_code=404, detail="Requested clinic not found")
         clinic_ids = [req_cid]
 
     if not clinic_ids:
@@ -99,7 +116,7 @@ def staff_dashboard(
         ).scalars().all()
     }
 
-    clinic_ids_out = list({r["organisation_id"] for r in staff_rows})
+    clinic_ids_out = list(allowed_clinic_ids)
     clinic_lookup = {
         c.organisation_id: c
         for c in db.execute(select(Organisation).where(Organisation.organisation_id.in_(clinic_ids_out))).scalars().all()
@@ -185,3 +202,4 @@ def apply_leave(payload: LeaveRequestCreate, db: Session = Depends(get_db)):
         "reason": leave.reason,
         "status": leave.status,
     }
+

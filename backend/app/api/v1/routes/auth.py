@@ -1,3 +1,5 @@
+"""Module: auth."""
+
 import uuid
 from datetime import date
 from secrets import token_urlsafe
@@ -258,3 +260,4 @@ def me(
         raise HTTPException(status_code=401, detail="User not found")
 
     return _as_user_payload(user)
+

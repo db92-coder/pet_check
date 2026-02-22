@@ -1,3 +1,5 @@
+/* Module: Clinics. */
+
 import React from "react";
 import {
   Alert,
@@ -184,3 +186,4 @@ export default function Clinics() {
     </Stack>
   );
 }
+

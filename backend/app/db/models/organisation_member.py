@@ -1,4 +1,6 @@
-﻿import uuid
+"""Module: organisation_member."""
+
+import uuid
 from sqlalchemy import String, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,3 +21,4 @@ class OrganisationMember(Base):
         primary_key=True
     )
     member_role: Mapped[str] = mapped_column(String, nullable=True)  # vet, nurse, admin
+

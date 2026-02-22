@@ -1,3 +1,5 @@
+"""Module: analytics."""
+
 import csv
 import io
 from datetime import date, datetime
@@ -540,3 +542,4 @@ def export_analytics(
     filename = f"analytics_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(buffer, media_type="text/csv", headers=headers)
+

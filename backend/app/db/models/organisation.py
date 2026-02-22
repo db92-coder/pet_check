@@ -1,4 +1,6 @@
-﻿import uuid
+"""Module: organisation."""
+
+import uuid
 from sqlalchemy import String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,3 +24,4 @@ class Organisation(Base):
     longitude: Mapped[str] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+

@@ -1,3 +1,5 @@
+"""Module: dashboard."""
+
 from __future__ import annotations
 
 import uuid
@@ -244,3 +246,4 @@ def dashboard_kpis(
         }
 
     return {"role": role_u, "summary": {}}
+

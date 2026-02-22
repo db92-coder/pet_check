@@ -1,3 +1,5 @@
+"""Module: pets."""
+
 from __future__ import annotations
 
 import uuid
@@ -430,3 +432,4 @@ def list_pet_medications(
         d["pet_id"] = str(d["pet_id"]) if isinstance(d.get("pet_id"), uuid.UUID) else d.get("pet_id")
         out.append(d)
     return out
+

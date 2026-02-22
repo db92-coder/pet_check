@@ -1,3 +1,5 @@
+/* Module: AdminAnalytics. */
+
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../../src/api/client.js";
 
@@ -640,3 +642,4 @@ export default function AdminAnalytics() {
     </Box>
   );
 }
+

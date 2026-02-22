@@ -1,3 +1,5 @@
+"""Module: clinics."""
+
 from __future__ import annotations
 
 import uuid
@@ -105,3 +107,4 @@ def clinic_staff(clinic_id: str, db: Session = Depends(get_db)):
         d["user_id"] = str(d["user_id"])
         out.append(d)
     return out
+

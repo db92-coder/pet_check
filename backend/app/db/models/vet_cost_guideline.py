@@ -1,3 +1,5 @@
+"""Module: vet_cost_guideline."""
+
 import uuid
 from datetime import datetime
 
@@ -23,3 +25,4 @@ class VetCostGuideline(Base):
     avg_lifespan_years: Mapped[int] = mapped_column(nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+

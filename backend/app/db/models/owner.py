@@ -1,4 +1,6 @@
-﻿import uuid
+"""Module: owner."""
+
+import uuid
 from sqlalchemy import Integer, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,3 +18,4 @@ class Owner(Base):
         nullable=False
     )
     verified_identity_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+

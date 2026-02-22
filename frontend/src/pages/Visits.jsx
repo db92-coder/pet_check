@@ -1,3 +1,5 @@
+/* Module: Visits. */
+
 import React from "react";
 import {
   Alert,
@@ -329,3 +331,4 @@ export default function Visits() {
     </Stack>
   );
 }
+

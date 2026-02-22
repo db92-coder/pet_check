@@ -1,3 +1,5 @@
+/* Module: AdminLayout. */
+
 import React, { useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -217,3 +219,4 @@ export default function AdminLayout() {
     </Box>
   );
 }
+

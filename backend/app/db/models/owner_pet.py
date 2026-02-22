@@ -1,4 +1,6 @@
-﻿import uuid
+"""Module: owner_pet."""
+
+import uuid
 from sqlalchemy import Date, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -21,3 +23,4 @@ class OwnerPet(Base):
     start_date: Mapped[Date] = mapped_column(Date, primary_key=True)
     end_date: Mapped[Date] = mapped_column(Date, nullable=True)
     relationship_type: Mapped[str] = mapped_column(String, nullable=False, default="primary_owner")
+

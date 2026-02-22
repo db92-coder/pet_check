@@ -1,3 +1,5 @@
+"""Module: staff_leave."""
+
 import uuid
 from datetime import date, datetime
 
@@ -27,3 +29,4 @@ class StaffLeave(Base):
     reason: Mapped[str] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="PENDING")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+

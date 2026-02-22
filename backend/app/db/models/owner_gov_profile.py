@@ -1,3 +1,5 @@
+"""Module: owner_gov_profile."""
+
 import uuid
 from datetime import datetime
 
@@ -37,3 +39,4 @@ class OwnerGovProfile(Base):
     basic_living_expenses: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+

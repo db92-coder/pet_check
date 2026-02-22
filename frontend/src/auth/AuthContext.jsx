@@ -1,3 +1,5 @@
+/* Module: AuthContext. */
+
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 
@@ -95,3 +97,4 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   return useContext(AuthContext);
 }
+

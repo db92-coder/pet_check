@@ -1,3 +1,5 @@
+"""Module: audit_log."""
+
 import uuid
 from sqlalchemy import String, DateTime, JSON
 from sqlalchemy.dialects.postgresql import UUID
@@ -25,3 +27,4 @@ class AuditLog(Base):
         DateTime,
         default=datetime.utcnow
     )
+

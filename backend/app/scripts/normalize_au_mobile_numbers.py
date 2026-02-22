@@ -1,3 +1,5 @@
+"""Module: normalize_au_mobile_numbers."""
+
 import random
 import string
 from app.db.session import SessionLocal
@@ -18,3 +20,4 @@ if __name__ == "__main__":
         print(f"Updated phone numbers for {len(users)} users to AU mobile format.")
     finally:
         session.close()
+

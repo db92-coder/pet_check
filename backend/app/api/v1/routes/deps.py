@@ -1,3 +1,5 @@
+"""Module: deps."""
+
 from typing import Generator
 from sqlalchemy.orm import Session
 
@@ -10,3 +12,4 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+

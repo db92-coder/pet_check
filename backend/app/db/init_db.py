@@ -1,4 +1,6 @@
-﻿from app.db.session import engine
+"""Module: init_db."""
+
+from app.db.session import engine
 from app.db.base import Base
 
 # Import models so they register with Base.metadata
@@ -15,3 +17,4 @@ from app.db.models.vaccination import Vaccination  # noqa: F401
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+

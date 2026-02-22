@@ -1,3 +1,5 @@
+/* Module: RequireRole. */
+
 import React from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthContext";
@@ -7,3 +9,4 @@ export default function RequireRole({ roles }) {
   if (!user) return <Navigate to="/login" replace />;
   return roles.includes(user.role) ? <Outlet /> : <Navigate to="/dashboard" replace />;
 }
+

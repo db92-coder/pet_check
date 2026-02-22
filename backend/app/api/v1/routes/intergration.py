@@ -1,3 +1,5 @@
+"""Module: intergration."""
+
 from fastapi import APIRouter
 import httpx
 from app.core.config import settings
@@ -28,3 +30,4 @@ async def gov_check(payload: dict):
         r = await client.post(f"{settings.mock_gov_base_url}/eligibility/check", json=payload)
         r.raise_for_status()
         return r.json()
+

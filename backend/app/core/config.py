@@ -1,3 +1,5 @@
+"""Module: config."""
+
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -9,3 +11,4 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 settings = Settings()
+

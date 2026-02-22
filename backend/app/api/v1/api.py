@@ -1,3 +1,5 @@
+"""Module: api."""
+
 # backend/app/api/v1/api.py
 from fastapi import APIRouter
 
@@ -30,3 +32,4 @@ api_router.include_router(staff_router, prefix="/staff", tags=["staff"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(eligibility_router, prefix="/eligibility", tags=["eligibility"])
 api_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
+

@@ -1,4 +1,6 @@
-﻿import uuid
+"""Module: vet_visit."""
+
+import uuid
 from datetime import datetime
 from sqlalchemy import DateTime, String, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
@@ -32,3 +34,4 @@ class VetVisit(Base):
     notes_visible_to_owner: Mapped[str] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+

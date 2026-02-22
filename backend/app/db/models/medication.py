@@ -1,3 +1,5 @@
+"""Module: medication."""
+
 import uuid
 from datetime import date
 from sqlalchemy import Date, ForeignKey, String
@@ -21,3 +23,4 @@ class Medication(Base):
     instructions: Mapped[str] = mapped_column(String, nullable=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=True)
     end_date: Mapped[date] = mapped_column(Date, nullable=True)
+

@@ -1,3 +1,5 @@
+"""Module: visits."""
+
 from datetime import date, datetime
 import uuid
 
@@ -178,3 +180,4 @@ def cancel_visit(visit_id: str, payload: VisitCancelPayload, db: Session = Depen
         "id": str(visit.visit_id),
         "reason": visit.reason,
     }
+

@@ -1,3 +1,5 @@
+"""Module: main."""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -261,3 +263,105 @@ with engine.begin() as conn:
             """
         )
     )
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS vet_practices (
+                id UUID PRIMARY KEY,
+                source_key VARCHAR NOT NULL UNIQUE,
+                source VARCHAR,
+                name VARCHAR NOT NULL,
+                abn VARCHAR,
+                practice_type VARCHAR,
+                phone VARCHAR,
+                email VARCHAR,
+                website VARCHAR,
+                facebook_url VARCHAR,
+                instagram_url VARCHAR,
+                street_address VARCHAR,
+                suburb VARCHAR,
+                state VARCHAR,
+                postcode VARCHAR,
+                latitude NUMERIC(9,6),
+                longitude NUMERIC(9,6),
+                service_types TEXT[],
+                opening_hours_text VARCHAR,
+                opening_hours_json VARCHAR,
+                after_hours_available BOOLEAN,
+                after_hours_notes VARCHAR,
+                emergency_referral VARCHAR,
+                rating NUMERIC(3,2),
+                review_count INTEGER,
+                scraped_at TIMESTAMPTZ NOT NULL
+            );
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_vet_practices_suburb_postcode ON vet_practices (suburb, postcode);"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_vet_practices_rating ON vet_practices (rating);"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_vet_practices_service_types_gin ON vet_practices USING GIN (service_types);"))
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS practice_staff (
+                id UUID PRIMARY KEY,
+                practice_id UUID NOT NULL REFERENCES vet_practices(id) ON DELETE CASCADE,
+                staff_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                role_raw TEXT,
+                bio TEXT,
+                profile_image_url TEXT,
+                source_url TEXT NOT NULL,
+                scraped_at TIMESTAMPTZ NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE
+            );
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS practice_staff_sources (
+                id UUID PRIMARY KEY,
+                practice_id UUID NOT NULL REFERENCES vet_practices(id) ON DELETE CASCADE,
+                source_url TEXT NOT NULL,
+                http_status INTEGER,
+                last_scraped_at TIMESTAMPTZ NOT NULL,
+                parse_success BOOLEAN NOT NULL DEFAULT FALSE,
+                notes TEXT
+            );
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_practice_staff_identity
+            ON practice_staff (practice_id, staff_name, role, source_url);
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_practice_staff_sources_lookup
+            ON practice_staff_sources (practice_id, source_url);
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+              BEGIN
+                CREATE EXTENSION IF NOT EXISTS postgis;
+              EXCEPTION
+                WHEN OTHERS THEN
+                  NULL;
+              END;
+            END $$;
+            """
+        )
+    )
+

@@ -1,4 +1,6 @@
-﻿import uuid
+"""Module: vaccination."""
+
+import uuid
 from datetime import datetime
 from sqlalchemy import DateTime, String, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
@@ -26,3 +28,4 @@ class Vaccination(Base):
     batch_number: Mapped[str] = mapped_column(String, nullable=True)
     administered_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     due_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+

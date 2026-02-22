@@ -216,11 +216,9 @@ That location is already correct in your project.
 
 ### Owner Experience
 
-![Owner Dashboard](pet_check_screenshots/owner_page_example.png)
 ![Owner Dashboard With Due Dates](pet_check_screenshots/owner_dashboard_with_due_dates.png)
 ![Owner Dashboard With Scores](pet_check_screenshots/owner_dashboard_with_scores.png)
 ![Owner Add Pet](pet_check_screenshots/user_add_pet.png)
-![Owner Weight Trend](pet_check_screenshots/owner_page_weight_trend.png)
 
 ### Vet and Admin Experience
 
@@ -239,10 +237,6 @@ That location is already correct in your project.
 ### Visits and Scheduling
 
 ![Initial Vet Visits Page](pet_check_screenshots/inital_vet_visits_page.png)
-
-### New User Example
-
-![New User Example](pet_check_screenshots/new_user_example.png)
 
 ## Troubleshooting
 

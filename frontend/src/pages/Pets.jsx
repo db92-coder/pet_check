@@ -1,3 +1,5 @@
+/* Module: Pets. */
+
 import React from "react";
 import { Box, Paper, Typography, Stack, TextField, InputAdornment, IconButton } from "@mui/material";
 import { DataGrid, GridToolbar } from "@mui/x-data-grid";
@@ -152,3 +154,4 @@ export default function Pets() {
     </Box>
   );
 }
+

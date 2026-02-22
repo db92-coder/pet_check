@@ -1,3 +1,5 @@
+"""Module: pet."""
+
 import uuid
 from datetime import datetime
 
@@ -36,3 +38,4 @@ class Pet(Base):
         DateTime,
         default=datetime.utcnow
     )
+

@@ -1,3 +1,5 @@
+/* Module: client. */
+
 import axios from "axios";
 
 export const api = axios.create({
@@ -9,3 +11,4 @@ api.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+

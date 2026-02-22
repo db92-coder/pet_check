@@ -1,3 +1,5 @@
+/* Module: Dashboard. */
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -865,3 +867,4 @@ export default function Dashboard() {
     </Stack>
   );
 }
+
