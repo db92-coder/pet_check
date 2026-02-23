@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.routes.deps import get_db
+from app.core.security import hash_password, verify_password
 from app.db.models.owner import Owner
 from app.db.models.owner_pet import OwnerPet
 from app.db.models.pet import Pet
@@ -121,7 +122,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
     user = User(
         email=normalized_email,
-        password=payload.password,
+        password=hash_password(payload.password),
         role=role,
         full_name=payload.full_name,
         phone=payload.phone,
@@ -185,7 +186,7 @@ async def register_owner(
 
     user = User(
         email=normalized_email,
-        password=password,
+        password=hash_password(password),
         role="OWNER",
         full_name=full_name,
         phone=phone,
@@ -236,7 +237,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         select(User).where(func.lower(User.email) == normalized_email)
     ).scalar_one_or_none()
 
-    if not user or user.password != payload.password:
+    if not user or not verify_password(payload.password, user.password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = token_urlsafe(32)

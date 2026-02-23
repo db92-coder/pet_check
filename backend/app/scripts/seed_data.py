@@ -10,6 +10,7 @@ from datetime import datetime, UTC, timedelta
 from sqlalchemy import select, text
 
 from app.db.session import SessionLocal
+from app.core.security import hash_password
 
 from app.db.models.user import User
 from app.db.models.owner import Owner
@@ -30,9 +31,87 @@ from app.db.models.practice_staff import PracticeStaff
 from app.db.models.practice_staff_source import PracticeStaffSource
 
 fake = Faker()
+random.seed(42)
+fake.seed_instance(42)
 
 DOG_VAX = ["C5", "C3", "Rabies"]
 CAT_VAX = ["F3", "FIV", "Rabies"]
+FIXED_ACCOUNT_PASSWORD = "Had6$sq78"
+FIXED_ACCOUNTS = [
+    {
+        "email": "admin@petprotect.local",
+        "role": "ADMIN",
+        "full_name": "Pet Protect Admin",
+        "suburb": "Hobart",
+        "postcode": "7000",
+    },
+    {
+        "email": "vet@petprotect.local",
+        "role": "VET",
+        "full_name": "Pet Protect Vet",
+        "suburb": "Launceston",
+        "postcode": "7250",
+    },
+    {
+        "email": "owner@petprotect.local",
+        "role": "OWNER",
+        "full_name": "Pet Protect Owner",
+        "suburb": "Sandy Bay",
+        "postcode": "7005",
+    },
+]
+POPULAR_EMAIL_PROVIDERS = [
+    "gmail.com",
+    "outlook.com",
+    "hotmail.com.au",
+    "yahoo.com.au",
+    "icloud.com",
+]
+TAS_LOCALITIES = [
+    ("Sandy Bay", "7005"),
+    ("Hobart", "7000"),
+    ("Lenah Valley", "7008"),
+    ("Moonah", "7009"),
+    ("Claremont", "7011"),
+    ("Lindisfarne", "7015"),
+    ("Bellerive", "7018"),
+    ("Rosny Park", "7018"),
+    ("Kingston", "7050"),
+    ("Taroona", "7053"),
+    ("Sorell", "7172"),
+    ("Dodges Ferry", "7173"),
+    ("Launceston", "7250"),
+    ("Kings Meadows", "7249"),
+    ("South Launceston", "7249"),
+    ("Scottsdale", "7260"),
+    ("Lilydale", "7268"),
+    ("Exeter", "7275"),
+    ("Longford", "7301"),
+    ("Deloraine", "7304"),
+    ("Sheffield", "7306"),
+    ("Devonport", "7310"),
+    ("Ulverstone", "7315"),
+    ("Penguin", "7316"),
+    ("Burnie", "7320"),
+    ("Smithton", "7330"),
+    ("St Helens", "7216"),
+]
+TAS_STREET_NAMES = [
+    "Main St",
+    "High St",
+    "Church St",
+    "King St",
+    "George St",
+    "Victoria St",
+    "Bay Rd",
+    "River Rd",
+    "Channel Hwy",
+    "Alexander Rd",
+    "Wellington St",
+    "Elizabeth St",
+    "Charles St",
+    "Crescent St",
+]
 
 # Shared helpers used by multiple seed builders.
 def generate_password(length: int = 12) -> str:
@@ -62,6 +141,78 @@ def _unique_staff_email(first_name: str, last_name: str, clinic_domain: str, use
         n += 1
     used.add(email)
     return email
+
+
+def _split_name_parts(full_name: str) -> tuple[str, str]:
+    parts = [p for p in (full_name or "").strip().split() if p]
+    if len(parts) >= 2:
+        return parts[0], parts[-1]
+    if len(parts) == 1:
+        return parts[0], "owner"
+    return "pet", "owner"
+
+
+def _normalize_email_token(value: str) -> str:
+    return "".join(ch.lower() for ch in value if ch.isalpha()) or "user"
+
+
+def _generate_realistic_email(full_name: str, used: set[str]) -> str:
+    first, last = _split_name_parts(full_name)
+    first_norm = _normalize_email_token(first)
+    last_norm = _normalize_email_token(last)
+    domain = random.choice(POPULAR_EMAIL_PROVIDERS)
+    pattern = random.choice(["first_last", "initial_last", "firstlast", "first_last_num", "initial_last_num"])
+    if pattern == "first_last":
+        local = f"{first_norm}.{last_norm}"
+    elif pattern == "initial_last":
+        local = f"{first_norm[0]}.{last_norm}"
+    elif pattern == "firstlast":
+        local = f"{first_norm}{last_norm}"
+    elif pattern == "first_last_num":
+        local = f"{first_norm}.{last_norm}{random.randint(1, 99)}"
+    else:
+        local = f"{first_norm[0]}.{last_norm}{random.randint(1, 99)}"
+
+    email = f"{local}@{domain}"
+    suffix = 2
+    while email in used:
+        email = f"{local}{suffix}@{domain}"
+        suffix += 1
+    used.add(email)
+    return email
+
+
+def _build_tas_address(suburb: str, postcode: str) -> str:
+    number = random.randint(1, 250)
+    street = random.choice(TAS_STREET_NAMES)
+    return f"{number} {street}, {suburb} TAS {postcode}"
+
+
+def _pick_tas_locality() -> tuple[str, str]:
+    return random.choice(TAS_LOCALITIES)
+
+
+def _postcode_bucket(postcode: str | None) -> str:
+    if not postcode:
+        return "UNKNOWN"
+    pc = "".join(ch for ch in str(postcode) if ch.isdigit())
+    if not pc:
+        return "UNKNOWN"
+    value = int(pc)
+    if 7000 <= value <= 7199:
+        return "SOUTH"
+    if 7200 <= value <= 7299:
+        return "NORTH_EAST"
+    if 7300 <= value <= 7399:
+        return "NORTH_WEST"
+    return "UNKNOWN"
+
+
+def _extract_postcode_from_address(address: str | None) -> str | None:
+    if not address:
+        return None
+    tokens = [tok for tok in str(address).replace(",", " ").split() if tok.isdigit() and len(tok) == 4]
+    return tokens[-1] if tokens else None
 
 
 def ensure_user_auth_columns(session) -> None:
@@ -260,7 +411,11 @@ def export_credentials(users: list[User]) -> Path:
         writer = csv.writer(f)
         writer.writerow(["user_id", "email", "password", "role"])
         for user in users:
-            writer.writerow([str(user.user_id), user.email, user.password, user.role])
+            if user.email.endswith("@petprotect.local"):
+                # Do not expose fixed account password/hash in exported CSV.
+                writer.writerow([str(user.user_id), user.email, "<hidden>", user.role])
+            else:
+                writer.writerow([str(user.user_id), user.email, user.password, user.role])
     return out_path
 
 
@@ -374,22 +529,41 @@ def seed_owner_gov_profiles(session, owners: list[Owner]) -> int:
     return len(rows)
 
 
-def seed_users(session, n: int = 200) -> list[User]:
+def seed_users(session, n: int = 800) -> list[User]:
     # Base user population across OWNER/VET/ADMIN roles.
     users: list[User] = []
-    for _ in range(n):
+    used_emails = {e for e in session.execute(select(User.email)).scalars().all() if e}
+
+    # Seed permanent deterministic accounts that are recreated on every reseed.
+    for row in FIXED_ACCOUNTS:
+        users.append(
+            User(
+                email=row["email"],
+                password=hash_password(FIXED_ACCOUNT_PASSWORD),
+                role=row["role"],
+                full_name=row["full_name"],
+                phone=generate_au_mobile(),
+                address=_build_tas_address(row["suburb"], row["postcode"]),
+            )
+        )
+        used_emails.add(row["email"])
+
+    random_n = max(0, n - len(FIXED_ACCOUNTS))
+    for _ in range(random_n):
         role = random.choices(
             population=["OWNER", "VET", "ADMIN"],
             weights=[0.6, 0.25, 0.15],
             k=1,
         )[0]
+        full_name = fake.name()
+        suburb, postcode = _pick_tas_locality()
         users.append(User(
-            email=fake.unique.email(),
+            email=_generate_realistic_email(full_name, used_emails),
             password=generate_password(),
             role=role,
-            full_name=fake.name(),
+            full_name=full_name,
             phone=generate_au_mobile(),
-            address=fake.address().replace("\n", ", "),
+            address=_build_tas_address(suburb, postcode),
         ))
     session.add_all(users)
     session.commit()
@@ -454,7 +628,7 @@ MEDICATION_POOL = [
 ]
 
 
-def seed_pets(session, n: int = 400) -> list[Pet]:
+def seed_pets(session, n: int = 1600) -> list[Pet]:
     # Build a mixed dog/cat population with realistic breed distribution.
     pets: list[Pet] = []
 
@@ -881,20 +1055,21 @@ def seed_vet_staff(session, clinics: list[Organisation]) -> list[User]:
         )
         random.shuffle(role_plan)
 
-        clinic_domain = _slugify_practice_domain(clinic.name or "vet-practice")
-
         for member_role, app_role in role_plan:
-            # Staff emails follow firstname.lastname@<clinic-domain>.com.au.
+            # Staff emails follow realistic person-style formats.
             first = fake.first_name()
             last = fake.last_name()
-            email = _unique_staff_email(first, last, clinic_domain, existing_emails)
+            full_name = f"{first} {last}"
+            email = _generate_realistic_email(full_name, existing_emails)
+            suburb = clinic.suburb or _pick_tas_locality()[0]
+            postcode = clinic.postcode or _pick_tas_locality()[1]
             user = User(
                 email=email,
                 password=generate_password(),
                 role=app_role,
-                full_name=f"{first} {last}",
+                full_name=full_name,
                 phone=generate_au_mobile(),
-                address=(clinic.address or "Clinic Address"),
+                address=_build_tas_address(suburb, postcode),
             )
             created_users.append(user)
             session.add(user)
@@ -923,13 +1098,59 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
 
     reasons = ["Annual check-up", "Vaccination", "Skin irritation", "Limping", "Dental", "Worming advice", "Weight check"]
 
+    clinic_by_bucket: dict[str, list[Organisation]] = {"SOUTH": [], "NORTH_EAST": [], "NORTH_WEST": [], "UNKNOWN": []}
+    for clinic in clinics:
+        clinic_by_bucket[_postcode_bucket(clinic.postcode)].append(clinic)
+
+    owner_postcode_by_pet: dict[uuid.UUID, str] = {}
+    pet_owner_rows = session.execute(
+        text(
+            """
+            SELECT op.pet_id::text AS pet_id, u.address AS owner_address
+            FROM owner_pets op
+            JOIN owners o ON o.owner_id = op.owner_id
+            JOIN users u ON u.user_id = o.user_id
+            WHERE op.end_date IS NULL
+            """
+        )
+    ).mappings().all()
+    for row in pet_owner_rows:
+        owner_postcode_by_pet[uuid.UUID(row["pet_id"])] = _extract_postcode_from_address(row.get("owner_address")) or ""
+
+    clinic_vet_user_ids: dict[uuid.UUID, list[uuid.UUID]] = {}
+    clinic_vet_rows = session.execute(
+        text(
+            """
+            SELECT om.organisation_id::text AS organisation_id, om.user_id::text AS user_id
+            FROM organisation_members om
+            JOIN users u ON u.user_id = om.user_id
+            WHERE UPPER(COALESCE(u.role, '')) = 'VET'
+            """
+        )
+    ).mappings().all()
+    for row in clinic_vet_rows:
+        cid = uuid.UUID(row["organisation_id"])
+        uid = uuid.UUID(row["user_id"])
+        clinic_vet_user_ids.setdefault(cid, []).append(uid)
+
+    vet_lookup = {u.user_id: u for u in vet_users}
+
     now = datetime.now(UTC)
     for p in pets:
         num_visits = random.randint(1, 3)
         for _ in range(num_visits):
             visit_dt = now - timedelta(days=random.randint(0, 365 * 3))
-            clinic = random.choice(clinics)
-            vet = random.choice(vet_users) if vet_users else None
+            owner_postcode = owner_postcode_by_pet.get(p.pet_id)
+            owner_bucket = _postcode_bucket(owner_postcode)
+            candidate_clinics = clinic_by_bucket.get(owner_bucket) or clinics
+            clinic = random.choice(candidate_clinics) if candidate_clinics else random.choice(clinics)
+
+            clinic_vets = clinic_vet_user_ids.get(clinic.organisation_id, [])
+            if clinic_vets:
+                vet_user_id = random.choice(clinic_vets)
+                vet = vet_lookup.get(vet_user_id)
+            else:
+                vet = random.choice(vet_users) if vet_users else None
 
             visit = VetVisit(
                 pet_id=p.pet_id,
@@ -1065,8 +1286,8 @@ if __name__ == "__main__":
         print("Resetting tables...")
         reset_db(session)
 
-        print("Seeding users (200)...")
-        users = seed_users(session, 200)
+        print("Seeding users (800)...")
+        users = seed_users(session, 800)
 
         print("Seeding owners (200)...")
         owners = seed_owners(session, users)
@@ -1077,10 +1298,10 @@ if __name__ == "__main__":
         print("Seeding owner government profiles...")
         gov_profile_n = seed_owner_gov_profiles(session, owners)
 
-        print("Seeding pets (400)...")
-        pets = seed_pets(session, 400)
+        print("Seeding pets (1600)...")
+        pets = seed_pets(session, 1600)
 
-        print("Linking owner_pets (400)...")
+        print("Linking owner_pets (1600)...")
         seed_owner_pets(session, owners, pets)
 
         print("Seeding clinics (5)...")
@@ -1105,7 +1326,9 @@ if __name__ == "__main__":
             f"staff_leave={leave_n}, vet_practices={practice_n}, practice_staff={practice_staff_n}, "
             f"practice_staff_sources={practice_staff_source_n}, vet_guidelines={guideline_n}, owner_gov_profiles={gov_profile_n}"
         )
-        print("Generated unique passwords for all users in users.password")
+        print(f"Fixed account password: {FIXED_ACCOUNT_PASSWORD}")
+        print("Fixed accounts: admin@petprotect.local, vet@petprotect.local, owner@petprotect.local")
+        print("All other seeded users keep randomly generated passwords.")
         print(f"Credentials export: {creds_path}")
     finally:
         session.close()

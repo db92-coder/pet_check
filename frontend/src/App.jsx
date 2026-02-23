@@ -16,6 +16,7 @@ import Visits from "./pages/Visits.jsx";
 import Owners from "./pages/Owners.jsx";
 import Clinics from "./pages/Clinics.jsx";
 import Staff from "./pages/Staff.jsx";
+import OwnerResources from "./pages/OwnerResources.jsx";
 
 // Primary component for this view/module.
 export default function App() {
@@ -28,6 +29,9 @@ export default function App() {
         <Route element={<AdminLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route element={<RequireRole roles={["OWNER"]} />}>
+            <Route path="/owner/resources" element={<OwnerResources />} />
+          </Route>
 
           <Route element={<RequireRole roles={["ADMIN", "VET"]} />}>
             <Route path="/pets" element={<Pets />} />

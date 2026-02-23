@@ -27,6 +27,7 @@ import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import BadgeIcon from "@mui/icons-material/Badge";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import InsightsIcon from "@mui/icons-material/Insights";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
 
 import { useTheme } from "@mui/material/styles";
 
@@ -49,6 +50,7 @@ export default function AdminLayout() {
   const navItems = useMemo(
     () => [
       { label: "Dashboard", path: "/dashboard", icon: <DashboardIcon />, roles: ["ADMIN", "VET", "OWNER"] },
+      { label: "Pet Resources", path: "/owner/resources", icon: <MenuBookIcon />, roles: ["OWNER"] },
       { label: "Pets", path: "/pets", icon: <PetsIcon />, roles: ["ADMIN", "VET"] },
       { label: "Visits", path: "/visits", icon: <EventNoteIcon />, roles: ["ADMIN", "VET"] },
       { label: "Owners", path: "/owners", icon: <PeopleIcon />, roles: ["ADMIN", "VET"] },
