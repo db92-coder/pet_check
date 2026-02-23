@@ -27,6 +27,7 @@ class LeaveRequestCreate(BaseModel):
     reason: str | None = None
 
 
+# Validate and coerce UUID inputs from query/path payloads.
 def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
     try:
         return uuid.UUID(value)
@@ -34,6 +35,7 @@ def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} (must be UUID)")
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("", summary="Staff dashboard payload by clinic context")
 def staff_dashboard(
     user_id: str,
@@ -165,6 +167,7 @@ def staff_dashboard(
     }
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.post("/leave", summary="Apply for leave")
 def apply_leave(payload: LeaveRequestCreate, db: Session = Depends(get_db)):
     uid = _parse_uuid(payload.user_id, "user_id")

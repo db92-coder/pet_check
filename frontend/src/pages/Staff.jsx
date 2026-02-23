@@ -20,9 +20,11 @@ import {
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 
+// Primary component for this view/module.
 export default function Staff() {
   const { user } = useAuth();
 
+// Local UI/data state for this page.
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [payload, setPayload] = React.useState(null);
@@ -54,6 +56,7 @@ export default function Staff() {
     }
   }, [user?.user_id, selectedClinicId]);
 
+// Initial/refresh data loading side-effect.
   React.useEffect(() => {
     if (!user?.user_id) return;
     loadPayload();
@@ -85,6 +88,7 @@ export default function Staff() {
     }
   }
 
+// Render UI layout and interactions.
   return (
     <Stack spacing={2}>
       <Typography variant="h5" fontWeight={800}>Staff</Typography>

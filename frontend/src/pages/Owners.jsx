@@ -23,7 +23,9 @@ function formatDateTime(value) {
   return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
 }
 
+// Primary component for this view/module.
 export default function Owners() {
+// Local UI/data state for this page.
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [search, setSearch] = React.useState("");
@@ -49,6 +51,7 @@ export default function Owners() {
     }
   }, [selectedOwner]);
 
+// Initial/refresh data loading side-effect.
   React.useEffect(() => {
     loadOwners();
   }, [loadOwners]);
@@ -84,6 +87,7 @@ export default function Owners() {
     );
   }, [owners, search]);
 
+// Render UI layout and interactions.
   return (
     <Stack spacing={2}>
       <Typography variant="h5" fontWeight={800}>Owners</Typography>

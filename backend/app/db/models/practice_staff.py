@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# Snapshot table for publicly listed clinic staff sourced from practice websites.
 class PracticeStaff(Base):
     __tablename__ = "practice_staff"
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# Represents medications prescribed to a pet, including dosage and treatment window.
 class Medication(Base):
     __tablename__ = "medications"
 

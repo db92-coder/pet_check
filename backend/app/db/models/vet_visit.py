@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# Clinical visit/appointment records for pets with optional clinic and vet context.
 class VetVisit(Base):
     __tablename__ = "vet_visits"
 

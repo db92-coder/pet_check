@@ -13,6 +13,7 @@ from app.api.v1.routes.deps import get_db
 router = APIRouter()
 
 
+# Validate and coerce UUID inputs from query/path payloads.
 def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
     try:
         return uuid.UUID(value)
@@ -20,6 +21,7 @@ def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} (must be UUID)")
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/kpis")
 def dashboard_kpis(
     role: str = Query(..., pattern="^(ADMIN|VET|OWNER)$"),

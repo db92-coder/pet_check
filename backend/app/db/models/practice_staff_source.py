@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# Captures provenance/parse status for each clinic staff source URL scrape.
 class PracticeStaffSource(Base):
     __tablename__ = "practice_staff_sources"
 

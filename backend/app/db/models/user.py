@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.db.base import Base
 
+# Primary application identity model for authentication and role-based access.
 class User(Base):
     __tablename__ = "users"
 

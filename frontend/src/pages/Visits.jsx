@@ -39,11 +39,13 @@ function formatDateTime(value) {
   return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
 }
 
+// Primary component for this view/module.
 export default function Visits() {
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
   const defaultDay = `${defaultMonth}-${String(today.getDate()).padStart(2, "0")}`;
 
+// Local UI/data state for this page.
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [month, setMonth] = React.useState(defaultMonth);
@@ -96,6 +98,7 @@ export default function Visits() {
     }
   }, [month, createForm.pet_id]);
 
+// Initial/refresh data loading side-effect.
   React.useEffect(() => {
     loadData();
   }, [loadData]);
@@ -168,6 +171,7 @@ export default function Visits() {
     return [{ id: "Weight (kg)", data: rows.map((r) => ({ x: String(r.measured_at).slice(0, 10), y: Number(r.weight_kg || 0) })) }];
   }, [profile]);
 
+// Render UI layout and interactions.
   return (
     <Stack spacing={2}>
       <Typography variant="h5" fontWeight={800}>Visits</Typography>

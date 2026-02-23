@@ -203,6 +203,7 @@ def _query_visits_by_reason(
     return list(db.execute(q, params).mappings().all())
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/kpis")
 def kpis(
     start: date | None = None,
@@ -272,6 +273,7 @@ def kpis(
     return db.execute(q, params).mappings().one()
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/care-events-by-month")
 def care_events_by_month(
     start: date | None = None,
@@ -293,6 +295,7 @@ def care_events_by_month(
     )
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/species-breakdown")
 def species_breakdown(db: Session = Depends(get_db)):
     q = text(
@@ -308,6 +311,7 @@ def species_breakdown(db: Session = Depends(get_db)):
     return list(db.execute(q).mappings().all())
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/vaccinations-by-type")
 def vaccinations_by_type(
     start: date | None = None,
@@ -327,6 +331,7 @@ def vaccinations_by_type(
     )
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/top-organisations-by-visits")
 def top_orgs_by_visits(
     start: date | None = None,
@@ -348,6 +353,7 @@ def top_orgs_by_visits(
     )
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/visits-by-reason")
 def visits_by_reason(
     start: date | None = None,
@@ -369,6 +375,7 @@ def visits_by_reason(
     )
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/filter-options")
 def analytics_filter_options(
     start: date | None = None,
@@ -464,6 +471,7 @@ def analytics_filter_options(
     }
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/export")
 def export_analytics(
     start: date | None = None,

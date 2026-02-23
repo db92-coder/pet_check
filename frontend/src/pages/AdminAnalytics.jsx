@@ -35,7 +35,9 @@ function toFiniteNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// Primary component for this view/module.
 export default function AdminAnalytics() {
+// Local UI/data state for this page.
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [month, setMonth] = useState("");
@@ -74,6 +76,7 @@ export default function AdminAnalytics() {
     return params;
   };
 
+// Initial/refresh data loading side-effect.
   useEffect(() => {
     let cancelled = false;
 
@@ -297,6 +300,7 @@ export default function AdminAnalytics() {
     }));
   }, [eligibilityDetail]);
 
+// Render UI layout and interactions.
   return (
     <Box sx={{ p: 3 }}>
       <Stack spacing={2}>

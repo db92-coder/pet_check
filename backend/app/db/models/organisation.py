@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.db.base import Base
 
+# Represents a clinic/organisation record used across visits, staff, and analytics.
 class Organisation(Base):
     __tablename__ = "organisations"
 

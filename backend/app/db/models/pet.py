@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# Core pet profile model used by visits, vaccinations, weights, and owner dashboards.
 class Pet(Base):
     __tablename__ = "pets"
 

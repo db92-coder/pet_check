@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# Stores staff leave requests and approved leave windows per clinic.
 class StaffLeave(Base):
     __tablename__ = "staff_leaves"
 

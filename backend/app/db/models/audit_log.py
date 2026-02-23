@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.db.base import Base
 
+# Stores immutable audit trail entries for key actions and integration events.
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

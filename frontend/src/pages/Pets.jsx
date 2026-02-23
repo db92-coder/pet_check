@@ -13,11 +13,14 @@ function formatDate(value) {
   return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
 }
 
+// Primary component for this view/module.
 export default function Pets() {
+// Local UI/data state for this page.
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
 
+// Initial/refresh data loading side-effect.
   React.useEffect(() => {
     let mounted = true;
 
@@ -92,6 +95,7 @@ export default function Pets() {
     { field: "verified_display", headerName: "Verified", width: 100 },
   ];
 
+// Render UI layout and interactions.
   return (
     <Box>
       <Typography variant="h5" fontWeight={800} sx={{ mb: 2 }}>

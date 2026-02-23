@@ -103,6 +103,7 @@ async def _read_image_file(photo: UploadFile | None) -> tuple[bytes | None, str 
     return data, content_type
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.post("/register", response_model=UserPayload)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     normalized_email = _normalize_email(payload.email)
@@ -160,6 +161,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     return _as_user_payload(user)
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.post("/register-owner", response_model=UserPayload)
 async def register_owner(
     email: str = Form(...),
@@ -226,6 +228,7 @@ async def register_owner(
     return _as_user_payload(user)
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     normalized_email = _normalize_email(payload.email)
@@ -245,6 +248,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     )
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/me", response_model=UserPayload)
 def me(
     authorization: str | None = Header(default=None),

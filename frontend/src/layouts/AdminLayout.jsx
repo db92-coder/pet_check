@@ -34,11 +34,13 @@ import { useAuth } from "../auth/AuthContext.jsx";
 
 const drawerWidth = 260;
 
+// Primary component for this view/module.
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const role = user?.role || "OWNER";
   const name = user?.full_name || user?.name || user?.username || "User";
 
+// Local UI/data state for this page.
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const nav = useNavigate();
@@ -78,6 +80,7 @@ export default function AdminLayout() {
       <List sx={{ px: 1, pt: 1 }}>
         {allowed.map((item) => {
           const selected = location.pathname === item.path;
+// Render UI layout and interactions.
           return (
             <ListItemButton
               key={item.path}

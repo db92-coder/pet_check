@@ -36,6 +36,7 @@ class PetAssessment:
     weight_discrepancy_flag: bool
 
 
+# Validate and coerce UUID inputs from query/path payloads.
 def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
     try:
         return uuid.UUID(value)
@@ -211,6 +212,7 @@ def _vet_score(pets: list[PetAssessment]) -> tuple[float, dict[str, Any]]:
     return round(_clamp(score), 2), {"recent_visit_missing": missing_recent, "weight_flags": weight_flags}
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/owner/{owner_id}")
 def owner_eligibility(owner_id: str, db: Session = Depends(get_db)):
     oid = _parse_uuid(owner_id, "owner_id")
@@ -250,6 +252,7 @@ def owner_eligibility(owner_id: str, db: Session = Depends(get_db)):
     }
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/owners")
 def eligibility_leaderboard(limit: int = Query(50, ge=1, le=200), db: Session = Depends(get_db)):
     owners = db.execute(select(Owner).limit(limit * 2)).scalars().all()

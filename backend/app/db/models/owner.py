@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# Maps an application user to the pet-owner domain profile and verification state.
 class Owner(Base):
     __tablename__ = "owners"
 

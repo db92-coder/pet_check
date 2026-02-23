@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# Holds simulated government/financial profile inputs used for eligibility scoring.
 class OwnerGovProfile(Base):
     __tablename__ = "owner_gov_profiles"
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# Join table linking users to organisations with a clinic-specific member role.
 class OrganisationMember(Base):
     __tablename__ = "organisation_members"
 

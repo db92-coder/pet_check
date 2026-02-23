@@ -42,6 +42,7 @@ function ClinicMapPanel({ centerClinic, nearbyClinics }) {
   const mapRef = React.useRef(null);
   const mapInstanceRef = React.useRef(null);
   const markersLayerRef = React.useRef(null);
+// Local UI/data state for this page.
   const [leafletReady, setLeafletReady] = React.useState(Boolean(window.L));
 
   const points = React.useMemo(() => {
@@ -52,6 +53,7 @@ function ClinicMapPanel({ centerClinic, nearbyClinics }) {
     ].filter((p) => Number.isFinite(toNum(p.latitude)) && Number.isFinite(toNum(p.longitude)));
   }, [centerClinic, nearbyClinics]);
 
+// Initial/refresh data loading side-effect.
   React.useEffect(() => {
     if (window.L) {
       setLeafletReady(true);
@@ -138,6 +140,7 @@ function ClinicMapPanel({ centerClinic, nearbyClinics }) {
     return <Typography sx={{ opacity: 0.75 }}>Map unavailable.</Typography>;
   }
 
+// Render UI layout and interactions.
   return (
     <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5, overflow: "hidden" }}>
       <Box
@@ -175,6 +178,7 @@ function ClinicMapPanel({ centerClinic, nearbyClinics }) {
   );
 }
 
+// Primary component for this view/module.
 export default function Clinics() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# Weight measurements captured for pets over time for health trend analysis.
 class Weight(Base):
     __tablename__ = "weights"
 

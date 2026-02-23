@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# Reference cost guideline rows used in vet-side affordability/risk scoring.
 class VetCostGuideline(Base):
     __tablename__ = "vet_cost_guidelines"
 

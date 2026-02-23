@@ -5,7 +5,9 @@ import { api } from "../api/client";
 
 const AuthContext = createContext(null);
 
+// Provider component for auth state, login/logout, and registration actions.
 export function AuthProvider({ children }) {
+// Local UI/data state for this page.
   const [user, setUser] = useState(() => {
     try {
       const raw = localStorage.getItem("auth_user");
@@ -18,6 +20,7 @@ export function AuthProvider({ children }) {
 
   const isAuthed = !!token;
 
+// Initial/refresh data loading side-effect.
   useEffect(() => {
     let cancelled = false;
 

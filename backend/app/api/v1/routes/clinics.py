@@ -17,6 +17,7 @@ from app.db.models.vet_visit import VetVisit
 router = APIRouter()
 
 
+# Validate and coerce UUID inputs from query/path payloads.
 def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
     try:
         return uuid.UUID(value)
@@ -145,6 +146,7 @@ def _simulated_capacity_metrics(seed: int, staff_count: int, visits_30d: int) ->
     return upcoming, cancellations
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("", summary="List clinics with capacity/cancellation insights")
 def list_clinics(limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db)):
     clinics = db.execute(
@@ -223,6 +225,7 @@ def list_clinics(limit: int = Query(200, ge=1, le=1000), db: Session = Depends(g
     return out
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/{clinic_id}/staff", summary="List staff for a clinic")
 def clinic_staff(clinic_id: str, db: Session = Depends(get_db)):
     cid = _parse_uuid(clinic_id, "clinic_id")

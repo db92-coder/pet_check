@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# Vaccination events administered to pets, optionally linked to visits.
 class Vaccination(Base):
     __tablename__ = "vaccinations"
 

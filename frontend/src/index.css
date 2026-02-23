@@ -1,9 +1,11 @@
+/* Global box model reset for predictable layout sizing. */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
+/* Ensure app shell can fill viewport height. */
 html,
 body,
 #root {
@@ -11,6 +13,7 @@ body,
   min-height: 100%;
 }
 
+/* Global body theme baseline; page-level components layer on top of this. */
 body {
   margin: 0;
   min-width: 320px;

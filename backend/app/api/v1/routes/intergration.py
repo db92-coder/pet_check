@@ -6,6 +6,7 @@ from app.core.config import settings
 
 router = APIRouter()
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/integrations/gov/ping")
 async def gov_ping():
     async with httpx.AsyncClient(timeout=5) as client:
@@ -13,6 +14,7 @@ async def gov_ping():
         r.raise_for_status()
         return {"upstream": "mock-gov", "response": r.json()}
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/integrations/vet/ping")
 async def vet_ping():
     async with httpx.AsyncClient(timeout=5) as client:
@@ -20,6 +22,7 @@ async def vet_ping():
         r.raise_for_status()
         return {"upstream": "mock-vet", "response": r.json()}
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.post("/integrations/gov/check")
 async def gov_check(payload: dict):
     """

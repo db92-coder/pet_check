@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# Join table tracking owner-to-pet relationships over time.
 class OwnerPet(Base):
     __tablename__ = "owner_pets"
 

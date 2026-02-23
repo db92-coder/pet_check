@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+# Real-world vet practice snapshot with contact, services, and rating metadata.
 class VetPractice(Base):
     __tablename__ = "vet_practices"
 

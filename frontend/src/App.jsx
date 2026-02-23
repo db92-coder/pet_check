@@ -17,7 +17,9 @@ import Owners from "./pages/Owners.jsx";
 import Clinics from "./pages/Clinics.jsx";
 import Staff from "./pages/Staff.jsx";
 
+// Primary component for this view/module.
 export default function App() {
+// Render UI layout and interactions.
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

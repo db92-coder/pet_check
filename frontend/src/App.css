@@ -1,3 +1,4 @@
+/* Legacy Vite sample styles retained for reference/testing components. */
 #root {
   max-width: 1280px;
   margin: 0 auto;
@@ -5,6 +6,7 @@
   text-align: center;
 }
 
+/* Example logo animation styles used by sample starter content. */
 .logo {
   height: 6em;
   padding: 1.5em;
@@ -33,6 +35,7 @@
   }
 }
 
+/* Generic card utility used by sample UI blocks. */
 .card {
   padding: 2em;
 }

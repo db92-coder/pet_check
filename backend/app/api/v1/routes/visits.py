@@ -32,6 +32,7 @@ class VisitCancelPayload(BaseModel):
 router = APIRouter()
 
 
+# Validate and coerce UUID inputs from query/path payloads.
 def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
     try:
         return uuid.UUID(value)
@@ -39,6 +40,7 @@ def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} (must be UUID)")
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("", summary="List visits (simple)")
 def list_visits(
     limit: int = 200,
@@ -102,6 +104,7 @@ def list_visits(
     return out
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/calendar-summary", summary="Visit totals per day for month view")
 def visits_calendar_summary(
     month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
@@ -153,6 +156,7 @@ def visits_calendar_summary(
     return out
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.post("", summary="Create a visit")
 def create_visit(payload: VisitCreatePayload, db: Session = Depends(get_db)):
     pet_id = _parse_uuid(payload.pet_id, "pet_id")
@@ -186,6 +190,7 @@ def create_visit(payload: VisitCreatePayload, db: Session = Depends(get_db)):
     }
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.patch("/{visit_id}/cancel", summary="Cancel a visit")
 def cancel_visit(visit_id: str, payload: VisitCancelPayload, db: Session = Depends(get_db)):
     vid = _parse_uuid(visit_id, "visit_id")

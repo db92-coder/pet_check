@@ -36,6 +36,7 @@ class WeightCreatePayload(BaseModel):
 # -------------------------
 # Helpers
 # -------------------------
+# Validate and coerce UUID inputs from query/path payloads.
 def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
     try:
         return uuid.UUID(value)
@@ -69,6 +70,7 @@ async def _read_image_file(photo: UploadFile | None) -> tuple[bytes | None, str 
 # Endpoints
 # -------------------------
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("", summary="List pets (with owner info)")
 def list_pets(
     limit: int = 200,
@@ -158,6 +160,7 @@ def list_pets(
     return out
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.post("", summary="Create pet for an owner user")
 async def create_pet(
     user_id: str = Form(...),
@@ -219,6 +222,7 @@ async def create_pet(
     }
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.put("/{pet_id}", summary="Update pet details")
 async def update_pet(
     pet_id: str,
@@ -265,6 +269,7 @@ async def update_pet(
     }
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/{pet_id}/photo", summary="Get pet photo")
 def get_pet_photo(
     pet_id: str,
@@ -278,6 +283,7 @@ def get_pet_photo(
     return Response(content=pet.photo_data, media_type=pet.photo_mime_type or "image/jpeg")
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/{pet_id}", summary="Get pet detail")
 def get_pet(
     pet_id: str,
@@ -305,6 +311,7 @@ def get_pet(
     }
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/{pet_id}/weights", summary="List weights for a pet")
 def list_pet_weights(
     pet_id: str,
@@ -338,6 +345,7 @@ def list_pet_weights(
     return cleaned
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.post("/{pet_id}/weights", summary="Add weight for a pet")
 def create_pet_weight(
     pet_id: str,
@@ -370,6 +378,7 @@ def create_pet_weight(
     }
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/{pet_id}/vaccinations", summary="List vaccinations for a pet")
 def list_pet_vaccinations(
     pet_id: str,
@@ -405,6 +414,7 @@ def list_pet_vaccinations(
     return cleaned
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/{pet_id}/medications", summary="List medications for a pet")
 def list_pet_medications(
     pet_id: str,

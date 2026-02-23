@@ -17,6 +17,7 @@ from app.db.models.organisation import Organisation
 router = APIRouter()
 
 
+# Validate and coerce UUID inputs from query/path payloads.
 def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
     try:
         return uuid.UUID(value)
@@ -24,6 +25,7 @@ def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} (must be UUID)")
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("", summary="List owners (simple)")
 def list_owners(limit: int = 200, offset: int = 0, db: Session = Depends(get_db)):
     rows = db.execute(
@@ -90,6 +92,7 @@ def list_owners(limit: int = 200, offset: int = 0, db: Session = Depends(get_db)
     return out
 
 
+# Endpoint: handles HTTP request/response mapping for this route.
 @router.get("/{owner_id}/pets", summary="List pets for owner")
 def list_owner_pets(owner_id: str, db: Session = Depends(get_db)):
     oid = _parse_uuid(owner_id, "owner_id")

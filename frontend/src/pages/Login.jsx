@@ -5,9 +5,11 @@ import { Box, Button, TextField, Typography, Alert, Paper, Stack, ToggleButton, 
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 
+// Primary component for this view/module.
 export default function Login() {
   const { login, registerOwner } = useAuth();
   const nav = useNavigate();
+// Local UI/data state for this page.
   const [mode, setMode] = React.useState("login");
   const [error, setError] = React.useState(null);
   const [success, setSuccess] = React.useState(null);
@@ -66,6 +68,7 @@ export default function Login() {
     }
   }
 
+// Render UI layout and interactions.
   return (
     <Box sx={{ minHeight: "100vh", display: "grid", placeItems: "center", p: 2 }}>
       <Paper sx={{ p: 4, width: "100%", maxWidth: 520 }}>

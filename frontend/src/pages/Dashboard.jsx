@@ -79,9 +79,11 @@ function dashboardSubtitleForRole(role) {
   return "Overview of your pets, appointments, and upcoming vaccine due dates.";
 }
 
+// Primary component for this view/module.
 export default function Dashboard() {
   const { user } = useAuth();
 
+// Local UI/data state for this page.
   const [loading, setLoading] = useState(true);
   const [savingPet, setSavingPet] = useState(false);
   const [error, setError] = useState("");
@@ -226,6 +228,7 @@ export default function Dashboard() {
     }
   }, [user?.role, user?.user_id]);
 
+// Initial/refresh data loading side-effect.
   useEffect(() => {
     let cancelled = false;
     async function run() {
@@ -410,6 +413,7 @@ export default function Dashboard() {
     }
   }
 
+// Render UI layout and interactions.
   return (
     <Stack spacing={2} sx={dashboardPageSx}>
       <Box>
