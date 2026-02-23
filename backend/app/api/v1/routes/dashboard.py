@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -123,6 +125,23 @@ OTHER_PET_TRIGGER_SPECIES = {
 }
 
 
+class ReminderCreate(BaseModel):
+    role_scope: str = Field(default="OWNER", min_length=3, max_length=20)
+    user_id: str | None = None
+    organisation_id: str | None = None
+    owner_id: str | None = None
+    pet_id: str | None = None
+    title: str = Field(min_length=3, max_length=200)
+    details: str | None = None
+    reminder_type: str = Field(default="REMINDER", min_length=3, max_length=30)
+    due_at: str = Field(min_length=10, max_length=50)
+    created_by_user_id: str | None = None
+
+
+class ReminderUpdate(BaseModel):
+    status: str = Field(default="OPEN", min_length=3, max_length=20)
+
+
 def _normalize_species_key(value: str | None) -> str | None:
     if not value:
         return None
@@ -157,6 +176,20 @@ def _parse_uuid(value: str, field_name: str = "id") -> uuid.UUID:
         return uuid.UUID(value)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} (must be UUID)")
+
+
+def _resolve_owner_id(db: Session, user_id: uuid.UUID) -> uuid.UUID | None:
+    # Map auth user ids to owner ids when filtering owner reminders.
+    return db.execute(
+        text(
+            """
+            SELECT o.owner_id
+            FROM owners o
+            WHERE o.user_id = :user_id
+            """
+        ),
+        {"user_id": user_id},
+    ).scalar_one_or_none()
 
 
 # Endpoint: handles HTTP request/response mapping for this route.
@@ -386,6 +419,204 @@ def dashboard_kpis(
         }
 
     return {"role": role_u, "summary": {}}
+
+
+# Endpoint: handles HTTP request/response mapping for this route.
+@router.get("/reminders", summary="List dashboard reminders")
+def list_dashboard_reminders(
+    role: str = Query(..., pattern="^(ADMIN|VET|OWNER)$"),
+    user_id: str | None = None,
+    month: str | None = None,
+    limit: int = 300,
+    db: Session = Depends(get_db),
+):
+    role_u = role.upper()
+    uid = _parse_uuid(user_id, "user_id") if user_id else None
+    sql_filters: list[str] = ["r.deleted_at IS NULL"]
+    params: dict[str, object] = {"limit": limit}
+
+    # Scope reminder visibility to the current user role and tenancy boundaries.
+    if role_u == "ADMIN":
+        sql_filters.append("UPPER(r.role_scope) = 'ADMIN'")
+    elif role_u == "VET":
+        if not uid:
+            raise HTTPException(status_code=400, detail="user_id is required for VET reminders")
+        sql_filters.append(
+            """
+            UPPER(r.role_scope) = 'VET'
+            AND (
+              r.user_id = :uid
+              OR r.organisation_id IN (
+                SELECT om.organisation_id
+                FROM organisation_members om
+                WHERE om.user_id = :uid
+              )
+            )
+            """
+        )
+        params["uid"] = uid
+    else:
+        if not uid:
+            raise HTTPException(status_code=400, detail="user_id is required for OWNER reminders")
+        owner_id = _resolve_owner_id(db, uid)
+        if not owner_id:
+            return []
+        sql_filters.append("UPPER(r.role_scope) = 'OWNER' AND r.owner_id = :owner_id")
+        params["owner_id"] = owner_id
+
+    # Optional month filter keeps calendar rendering lightweight on the client.
+    if month:
+        try:
+            month_start = datetime.strptime(month, "%Y-%m").replace(tzinfo=UTC)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid month format, expected YYYY-MM")
+        if month_start.month == 12:
+            next_month = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month = month_start.replace(month=month_start.month + 1)
+        sql_filters.append("r.due_at >= :month_start AND r.due_at < :next_month")
+        params["month_start"] = month_start
+        params["next_month"] = next_month
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+              r.reminder_id::text AS id,
+              r.role_scope,
+              r.user_id::text AS user_id,
+              r.organisation_id::text AS organisation_id,
+              r.owner_id::text AS owner_id,
+              r.pet_id::text AS pet_id,
+              p.name AS pet_name,
+              o.name AS clinic_name,
+              r.title,
+              r.details,
+              r.reminder_type,
+              r.due_at,
+              r.status,
+              r.created_at
+            FROM dashboard_reminders r
+            LEFT JOIN pets p ON p.pet_id = r.pet_id
+            LEFT JOIN organisations o ON o.organisation_id = r.organisation_id
+            WHERE {' AND '.join(sql_filters)}
+            ORDER BY r.due_at ASC
+            LIMIT :limit
+            """
+        ),
+        params,
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+# Endpoint: handles HTTP request/response mapping for this route.
+@router.post("/reminders", summary="Create dashboard reminder")
+def create_dashboard_reminder(payload: ReminderCreate, db: Session = Depends(get_db)):
+    role_scope = payload.role_scope.strip().upper()
+    if role_scope not in {"ADMIN", "VET", "OWNER"}:
+        raise HTTPException(status_code=400, detail="role_scope must be ADMIN, VET, or OWNER")
+    try:
+        due_at = datetime.fromisoformat(payload.due_at.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="due_at must be ISO datetime")
+
+    row = db.execute(
+        text(
+            """
+            INSERT INTO dashboard_reminders (
+              reminder_id,
+              role_scope,
+              user_id,
+              organisation_id,
+              owner_id,
+              pet_id,
+              title,
+              details,
+              reminder_type,
+              due_at,
+              status,
+              created_by_user_id,
+              created_at
+            )
+            VALUES (
+              :reminder_id,
+              :role_scope,
+              :user_id,
+              :organisation_id,
+              :owner_id,
+              :pet_id,
+              :title,
+              :details,
+              :reminder_type,
+              :due_at,
+              'OPEN',
+              :created_by_user_id,
+              :created_at
+            )
+            RETURNING reminder_id::text AS id
+            """
+        ),
+        {
+            "reminder_id": uuid.uuid4(),
+            "role_scope": role_scope,
+            "user_id": _parse_uuid(payload.user_id, "user_id") if payload.user_id else None,
+            "organisation_id": _parse_uuid(payload.organisation_id, "organisation_id") if payload.organisation_id else None,
+            "owner_id": _parse_uuid(payload.owner_id, "owner_id") if payload.owner_id else None,
+            "pet_id": _parse_uuid(payload.pet_id, "pet_id") if payload.pet_id else None,
+            "title": payload.title.strip(),
+            "details": (payload.details or "").strip() or None,
+            "reminder_type": payload.reminder_type.strip().upper(),
+            "due_at": due_at,
+            "created_by_user_id": _parse_uuid(payload.created_by_user_id, "created_by_user_id")
+            if payload.created_by_user_id
+            else None,
+            "created_at": datetime.now(UTC),
+        },
+    ).mappings().one()
+    db.commit()
+    return {"id": row["id"]}
+
+
+# Endpoint: handles HTTP request/response mapping for this route.
+@router.patch("/reminders/{reminder_id}", summary="Update reminder status")
+def update_dashboard_reminder(reminder_id: str, payload: ReminderUpdate, db: Session = Depends(get_db)):
+    rid = _parse_uuid(reminder_id, "reminder_id")
+    result = db.execute(
+        text(
+            """
+            UPDATE dashboard_reminders
+            SET status = :status
+            WHERE reminder_id = :reminder_id
+              AND deleted_at IS NULL
+            """
+        ),
+        {"status": payload.status.strip().upper(), "reminder_id": rid},
+    )
+    db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return {"ok": True}
+
+
+# Endpoint: handles HTTP request/response mapping for this route.
+@router.delete("/reminders/{reminder_id}", summary="Delete reminder")
+def delete_dashboard_reminder(reminder_id: str, db: Session = Depends(get_db)):
+    rid = _parse_uuid(reminder_id, "reminder_id")
+    result = db.execute(
+        text(
+            """
+            UPDATE dashboard_reminders
+            SET deleted_at = :deleted_at
+            WHERE reminder_id = :reminder_id
+              AND deleted_at IS NULL
+            """
+        ),
+        {"deleted_at": datetime.now(UTC), "reminder_id": rid},
+    )
+    db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return {"ok": True}
 
 
 # Endpoint: handles HTTP request/response mapping for this route.

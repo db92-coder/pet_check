@@ -1,10 +1,11 @@
 /* Module: App. */
 
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 
 import RequireAuth from "./auth/RequireAuth.jsx";
 import RequireRole from "./auth/RequireRole.jsx";
+import { useAuth } from "./auth/AuthContext.jsx";
 
 import AdminLayout from "./layouts/AdminLayout.jsx";
 import Login from "./pages/Login.jsx";
@@ -17,6 +18,19 @@ import Owners from "./pages/Owners.jsx";
 import Clinics from "./pages/Clinics.jsx";
 import Staff from "./pages/Staff.jsx";
 import OwnerResources from "./pages/OwnerResources.jsx";
+
+const ANALYTICS_OWNER_EMAIL = "admin@petprotect.local";
+
+function RequireAnalyticsAccess() {
+  const { user } = useAuth();
+  const role = (user?.role || "").toUpperCase();
+  const email = String(user?.email || "").toLowerCase();
+  return role === "ADMIN" && email === ANALYTICS_OWNER_EMAIL ? (
+    <Outlet />
+  ) : (
+    <Navigate to="/dashboard" replace />
+  );
+}
 
 // Primary component for this view/module.
 export default function App() {
@@ -39,10 +53,13 @@ export default function App() {
             <Route path="/owners" element={<Owners />} />
             <Route path="/clinics" element={<Clinics />} />
             <Route path="/staff" element={<Staff />} />
-            <Route path="/users" element={<Placeholder title="Users" />} />
           </Route>
 
           <Route element={<RequireRole roles={["ADMIN"]} />}>
+            <Route path="/users" element={<Placeholder title="Users" />} />
+          </Route>
+
+          <Route element={<RequireAnalyticsAccess />}>
             <Route path="/admin/analytics" element={<AdminAnalytics />} />
           </Route>
         </Route>

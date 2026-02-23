@@ -43,6 +43,13 @@ function formatDate(value) {
   return d.toLocaleDateString();
 }
 
+function toIsoDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
 const emptyPetForm = {
   name: "",
   species: "",
@@ -103,10 +110,80 @@ export default function Dashboard() {
   const [weightKg, setWeightKg] = useState("");
   const [weightDate, setWeightDate] = useState("");
   const [savingWeight, setSavingWeight] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
+  const [reminders, setReminders] = useState([]);
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [savingReminder, setSavingReminder] = useState(false);
+  const [reminderPetOptions, setReminderPetOptions] = useState([]);
+  const [reminderForm, setReminderForm] = useState({
+    title: "",
+    details: "",
+    due_at: "",
+    reminder_type: "REMINDER",
+    pet_id: "",
+  });
 
   const [petDialogOpen, setPetDialogOpen] = useState(false);
   const [editingPetId, setEditingPetId] = useState(null);
   const [petForm, setPetForm] = useState(emptyPetForm);
+
+  const loadReminders = useCallback(async () => {
+    const role = (user?.role || "").toUpperCase();
+    if (!["ADMIN", "VET", "OWNER"].includes(role)) {
+      setReminders([]);
+      return;
+    }
+    setReminderLoading(true);
+    try {
+      const res = await api.get("/dashboard/reminders", {
+        params: {
+          role,
+          user_id: user?.user_id,
+          month: calendarMonth,
+          limit: 400,
+        },
+      });
+      setReminders(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Reminder load failed", err);
+      setReminders([]);
+    } finally {
+      setReminderLoading(false);
+    }
+  }, [calendarMonth, user?.role, user?.user_id]);
+
+  const loadReminderPetOptions = useCallback(async () => {
+    const role = String(user?.role || "").toUpperCase();
+    try {
+      if (role === "OWNER") {
+        // Owners only see their own pets in the reminder link dropdown.
+        setReminderPetOptions(
+          pets.map((p) => ({
+            id: p.id,
+            name: p.name,
+            species: p.species,
+            owner_name: p.owner_full_name,
+          }))
+        );
+        return;
+      }
+      // Admin/Vet can link reminders to pets across the network for coordination tasks.
+      const res = await api.get("/pets", { params: { limit: 500 } });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setReminderPetOptions(
+        rows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          species: p.species,
+          owner_name: p.owner_full_name,
+        }))
+      );
+    } catch (err) {
+      console.error("Reminder pet options load failed", err);
+      setReminderPetOptions([]);
+    }
+  }, [pets, user?.role]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -241,6 +318,14 @@ export default function Dashboard() {
     };
   }, [loadDashboard]);
 
+  useEffect(() => {
+    loadReminders();
+  }, [loadReminders]);
+
+  useEffect(() => {
+    loadReminderPetOptions();
+  }, [loadReminderPetOptions]);
+
   const personalInfo = useMemo(() => {
     const firstPet = pets[0] || {};
     return {
@@ -348,6 +433,96 @@ export default function Dashboard() {
     }
     return map;
   }, [medications]);
+
+  const remindersByDate = useMemo(() => {
+    const map = new Map();
+    for (const reminder of reminders) {
+      const key = toIsoDate(reminder.due_at);
+      if (!key) continue;
+      const list = map.get(key) || [];
+      list.push(reminder);
+      map.set(key, list);
+    }
+    return map;
+  }, [reminders]);
+
+  const calendarCells = useMemo(() => {
+    const [yearStr, monthStr] = String(calendarMonth || "").split("-");
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    if (!year || !month) return [];
+    const first = new Date(year, month - 1, 1);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const offset = first.getDay();
+    const cells = [];
+    for (let i = 0; i < offset; i += 1) {
+      cells.push({ empty: true, key: `e-${i}` });
+    }
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month - 1, day);
+      const iso = toIsoDate(date);
+      const count = (remindersByDate.get(iso) || []).length;
+      cells.push({ empty: false, key: iso, iso, day, count });
+    }
+    return cells;
+  }, [calendarMonth, remindersByDate]);
+
+  const selectedDateReminders = useMemo(() => {
+    if (selectedCalendarDate) {
+      return [...(remindersByDate.get(selectedCalendarDate) || [])].sort(
+        (a, b) => new Date(a.due_at) - new Date(b.due_at)
+      );
+    }
+    return [...reminders].sort((a, b) => new Date(a.due_at) - new Date(b.due_at));
+  }, [reminders, remindersByDate, selectedCalendarDate]);
+
+  async function createReminder(e) {
+    e.preventDefault();
+    if (!reminderForm.title.trim() || !reminderForm.due_at) return;
+    setSavingReminder(true);
+    try {
+      const role = String(user?.role || "OWNER").toUpperCase();
+      const ownerId = role === "OWNER" ? pets[0]?.owner_id || null : null;
+      await api.post("/dashboard/reminders", {
+        role_scope: role,
+        user_id: role === "VET" ? user?.user_id : null,
+        owner_id: ownerId,
+        pet_id: reminderForm.pet_id || null,
+        title: reminderForm.title.trim(),
+        details: reminderForm.details.trim() || null,
+        reminder_type: reminderForm.reminder_type,
+        due_at: new Date(reminderForm.due_at).toISOString(),
+        created_by_user_id: user?.user_id || null,
+      });
+      setReminderForm({ title: "", details: "", due_at: "", reminder_type: "REMINDER", pet_id: "" });
+      await loadReminders();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "Failed to create reminder.");
+    } finally {
+      setSavingReminder(false);
+    }
+  }
+
+  async function markReminderDone(reminderId) {
+    try {
+      await api.patch(`/dashboard/reminders/${reminderId}`, { status: "DONE" });
+      await loadReminders();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "Failed to update reminder.");
+    }
+  }
+
+  async function deleteReminder(reminderId) {
+    try {
+      await api.delete(`/dashboard/reminders/${reminderId}`);
+      await loadReminders();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "Failed to delete reminder.");
+    }
+  }
 
   function openAddPetDialog() {
     setEditingPetId(null);
@@ -809,6 +984,175 @@ export default function Dashboard() {
             </Grid>
           </Grid>
           )}
+
+          <Grid container spacing={2} alignItems="flex-start">
+            <Grid size={{ xs: 12, lg: 4 }}>
+              <Paper sx={dashboardCardSx}>
+                <Typography variant="h6" fontWeight={700}>Calendar</Typography>
+                <Divider sx={{ my: 1.5 }} />
+                <Stack spacing={1.25}>
+                  <TextField
+                    label="Month"
+                    type="month"
+                    value={calendarMonth}
+                    onChange={(e) => {
+                      setCalendarMonth(e.target.value);
+                      setSelectedCalendarDate("");
+                    }}
+                    InputLabelProps={{ shrink: true }}
+                    size="small"
+                  />
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                      gap: 0.75,
+                    }}
+                  >
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                      <Typography key={day} variant="caption" sx={{ textAlign: "center", opacity: 0.75 }}>
+                        {day}
+                      </Typography>
+                    ))}
+                    {calendarCells.map((cell) => (
+                      <Box
+                        key={cell.key}
+                        onClick={() => {
+                          if (cell.empty) return;
+                          setSelectedCalendarDate((prev) => (prev === cell.iso ? "" : cell.iso));
+                        }}
+                        sx={{
+                          minHeight: 46,
+                          borderRadius: 1.25,
+                          border: "1px solid #d9e2ef",
+                          backgroundColor: cell.empty
+                            ? "transparent"
+                            : selectedCalendarDate === cell.iso
+                              ? "rgba(25,118,210,0.12)"
+                              : "#fff",
+                          cursor: cell.empty ? "default" : "pointer",
+                          p: 0.6,
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        {!cell.empty && (
+                          <>
+                            <Typography variant="caption">{cell.day}</Typography>
+                            {cell.count > 0 && (
+                              <Chip size="small" label={cell.count} color="primary" sx={{ height: 18, alignSelf: "flex-start" }} />
+                            )}
+                          </>
+                        )}
+                      </Box>
+                    ))}
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid size={{ xs: 12, lg: 8 }}>
+              <Paper sx={dashboardCardSx}>
+                <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.5}>
+                  <Typography variant="h6" fontWeight={700}>
+                    Reminders / Follow-ups / Concerns
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.75 }}>
+                    {selectedCalendarDate ? `Showing ${selectedCalendarDate}` : "Showing all dates in selected month"}
+                  </Typography>
+                </Stack>
+                <Divider sx={{ my: 1.5 }} />
+
+                <Box component="form" onSubmit={createReminder} sx={{ display: "grid", gap: 1.25, mb: 2 }}>
+                  <TextField
+                    size="small"
+                    label="Title"
+                    value={reminderForm.title}
+                    onChange={(e) => setReminderForm((prev) => ({ ...prev, title: e.target.value }))}
+                    required
+                  />
+                  <TextField
+                    size="small"
+                    label="Details"
+                    value={reminderForm.details}
+                    onChange={(e) => setReminderForm((prev) => ({ ...prev, details: e.target.value }))}
+                  />
+                  <TextField
+                    select
+                    size="small"
+                    label="Link to pet (optional)"
+                    value={reminderForm.pet_id}
+                    onChange={(e) => setReminderForm((prev) => ({ ...prev, pet_id: e.target.value }))}
+                    helperText={reminderPetOptions.length === 0 ? "No pets available to link." : ""}
+                  >
+                    <MenuItem value="">No pet link</MenuItem>
+                    {reminderPetOptions.map((pet) => (
+                      <MenuItem key={pet.id} value={pet.id}>
+                        {pet.name} ({pet.species}){pet.owner_name ? ` - ${pet.owner_name}` : ""}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
+                    <TextField
+                      select
+                      size="small"
+                      label="Type"
+                      value={reminderForm.reminder_type}
+                      onChange={(e) => setReminderForm((prev) => ({ ...prev, reminder_type: e.target.value }))}
+                      fullWidth
+                    >
+                      <MenuItem value="REMINDER">REMINDER</MenuItem>
+                      <MenuItem value="FOLLOWUP">FOLLOWUP</MenuItem>
+                      <MenuItem value="CONCERN">CONCERN</MenuItem>
+                    </TextField>
+                    <TextField
+                      size="small"
+                      label="Due"
+                      type="datetime-local"
+                      value={reminderForm.due_at}
+                      onChange={(e) => setReminderForm((prev) => ({ ...prev, due_at: e.target.value }))}
+                      InputLabelProps={{ shrink: true }}
+                      fullWidth
+                      required
+                    />
+                    <Button type="submit" variant="contained" disabled={savingReminder}>
+                      {savingReminder ? "Saving..." : "Add"}
+                    </Button>
+                  </Stack>
+                </Box>
+
+                {reminderLoading ? (
+                  <Typography sx={{ opacity: 0.75 }}>Loading calendar items...</Typography>
+                ) : selectedDateReminders.length === 0 ? (
+                  <Typography sx={{ opacity: 0.75 }}>No reminders for the selected period.</Typography>
+                ) : (
+                  <List dense>
+                    {selectedDateReminders.map((r) => (
+                      <ListItem
+                        key={r.id}
+                        disableGutters
+                        secondaryAction={
+                          <Stack direction="row" spacing={1}>
+                            {r.status !== "DONE" && (
+                              <Button size="small" onClick={() => markReminderDone(r.id)}>Done</Button>
+                            )}
+                            <Button size="small" color="error" onClick={() => deleteReminder(r.id)}>Delete</Button>
+                          </Stack>
+                        }
+                      >
+                        <ListItemText
+                          primary={`${r.title || "Reminder"}${r.pet_name ? ` - ${r.pet_name}` : ""}${r.clinic_name ? ` (${r.clinic_name})` : ""}`}
+                          secondary={`${formatDateTime(r.due_at)} | ${r.reminder_type || "REMINDER"} | ${r.status || "OPEN"}${r.details ? `\n${r.details}` : ""}`}
+                          secondaryTypographyProps={{ sx: { whiteSpace: "pre-line" } }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
         </>
       )}
 

@@ -336,6 +336,67 @@ with engine.begin() as conn:
     conn.execute(
         text(
             """
+            CREATE TABLE IF NOT EXISTS owner_notes (
+                note_id UUID PRIMARY KEY,
+                owner_id UUID NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
+                pet_id UUID REFERENCES pets(pet_id) ON DELETE SET NULL,
+                author_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                note_text TEXT NOT NULL,
+                note_type VARCHAR NOT NULL DEFAULT 'GENERAL',
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMP
+            );
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_owner_notes_owner_created ON owner_notes (owner_id, created_at DESC);"))
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS concern_flags (
+                flag_id UUID PRIMARY KEY,
+                owner_id UUID NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
+                pet_id UUID REFERENCES pets(pet_id) ON DELETE SET NULL,
+                raised_by_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                severity VARCHAR NOT NULL DEFAULT 'MEDIUM',
+                status VARCHAR NOT NULL DEFAULT 'OPEN',
+                category VARCHAR NOT NULL DEFAULT 'WELFARE',
+                description TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                resolved_at TIMESTAMP,
+                resolved_by_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                resolution_notes TEXT
+            );
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_concern_flags_owner_status ON concern_flags (owner_id, status, created_at DESC);"))
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS dashboard_reminders (
+                reminder_id UUID PRIMARY KEY,
+                role_scope VARCHAR NOT NULL,
+                user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                organisation_id UUID REFERENCES organisations(organisation_id) ON DELETE SET NULL,
+                owner_id UUID REFERENCES owners(owner_id) ON DELETE SET NULL,
+                pet_id UUID REFERENCES pets(pet_id) ON DELETE SET NULL,
+                title VARCHAR NOT NULL,
+                details TEXT,
+                reminder_type VARCHAR NOT NULL DEFAULT 'REMINDER',
+                due_at TIMESTAMP NOT NULL,
+                status VARCHAR NOT NULL DEFAULT 'OPEN',
+                created_by_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMP
+            );
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_dashboard_reminders_scope_due ON dashboard_reminders (role_scope, due_at);"))
+    conn.execute(
+        text(
+            """
             CREATE UNIQUE INDEX IF NOT EXISTS uq_practice_staff_identity
             ON practice_staff (practice_id, staff_name, role, source_url);
             """

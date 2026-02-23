@@ -34,6 +34,7 @@ import { useTheme } from "@mui/material/styles";
 import { useAuth } from "../auth/AuthContext.jsx";
 
 const drawerWidth = 260;
+const ANALYTICS_OWNER_EMAIL = "admin@petprotect.local";
 
 // Primary component for this view/module.
 export default function AdminLayout() {
@@ -56,13 +57,19 @@ export default function AdminLayout() {
       { label: "Owners", path: "/owners", icon: <PeopleIcon />, roles: ["ADMIN", "VET"] },
       { label: "Clinics", path: "/clinics", icon: <LocalHospitalIcon />, roles: ["ADMIN", "VET"] },
       { label: "Staff", path: "/staff", icon: <BadgeIcon />, roles: ["ADMIN", "VET"] },
-      { label: "Users", path: "/users", icon: <AdminPanelSettingsIcon />, roles: ["ADMIN", "VET"] },
+      { label: "Users", path: "/users", icon: <AdminPanelSettingsIcon />, roles: ["ADMIN"] },
       { label: "Analytics", path: "/admin/analytics", icon: <InsightsIcon />, roles: ["ADMIN"] },
     ],
     []
   );
 
-  const allowed = navItems.filter((i) => i.roles.includes(role));
+  const allowed = navItems.filter((i) => {
+    if (!i.roles.includes(role)) return false;
+    if (i.path === "/admin/analytics") {
+      return String(user?.email || "").toLowerCase() === ANALYTICS_OWNER_EMAIL;
+    }
+    return true;
+  });
 
   const drawerContent = (
     <Box sx={{ height: "100%", color: "#fff" }}>

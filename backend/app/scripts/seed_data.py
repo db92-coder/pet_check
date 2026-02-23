@@ -405,6 +405,72 @@ def ensure_risk_tables(session) -> None:
     session.commit()
 
 
+def ensure_care_coordination_tables(session) -> None:
+    # Add owner clinical notes, concern flags, and dashboard calendar reminders.
+    session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS owner_notes (
+                note_id UUID PRIMARY KEY,
+                owner_id UUID NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
+                pet_id UUID REFERENCES pets(pet_id) ON DELETE SET NULL,
+                author_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                note_text TEXT NOT NULL,
+                note_type VARCHAR NOT NULL DEFAULT 'GENERAL',
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMP
+            );
+            """
+        )
+    )
+    session.execute(text("CREATE INDEX IF NOT EXISTS idx_owner_notes_owner_created ON owner_notes (owner_id, created_at DESC);"))
+    session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS concern_flags (
+                flag_id UUID PRIMARY KEY,
+                owner_id UUID NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
+                pet_id UUID REFERENCES pets(pet_id) ON DELETE SET NULL,
+                raised_by_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                severity VARCHAR NOT NULL DEFAULT 'MEDIUM',
+                status VARCHAR NOT NULL DEFAULT 'OPEN',
+                category VARCHAR NOT NULL DEFAULT 'WELFARE',
+                description TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                resolved_at TIMESTAMP,
+                resolved_by_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                resolution_notes TEXT
+            );
+            """
+        )
+    )
+    session.execute(text("CREATE INDEX IF NOT EXISTS idx_concern_flags_owner_status ON concern_flags (owner_id, status, created_at DESC);"))
+    session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS dashboard_reminders (
+                reminder_id UUID PRIMARY KEY,
+                role_scope VARCHAR NOT NULL,
+                user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                organisation_id UUID REFERENCES organisations(organisation_id) ON DELETE SET NULL,
+                owner_id UUID REFERENCES owners(owner_id) ON DELETE SET NULL,
+                pet_id UUID REFERENCES pets(pet_id) ON DELETE SET NULL,
+                title VARCHAR NOT NULL,
+                details TEXT,
+                reminder_type VARCHAR NOT NULL DEFAULT 'REMINDER',
+                due_at TIMESTAMP NOT NULL,
+                status VARCHAR NOT NULL DEFAULT 'OPEN',
+                created_by_user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMP
+            );
+            """
+        )
+    )
+    session.execute(text("CREATE INDEX IF NOT EXISTS idx_dashboard_reminders_scope_due ON dashboard_reminders (role_scope, due_at);"))
+    session.commit()
+
+
 def export_credentials(users: list[User]) -> Path:
     out_path = Path(__file__).resolve().parent / "seeded_user_credentials.csv"
     with out_path.open("w", newline="", encoding="utf-8") as f:
@@ -423,6 +489,9 @@ def reset_db(session) -> None:
     # Keep reset order explicit so FK dependencies truncate cleanly.
     session.execute(text("""
         TRUNCATE TABLE
+          dashboard_reminders,
+          concern_flags,
+          owner_notes,
           staff_leaves,
           practice_staff_sources,
           practice_staff,
@@ -1096,7 +1165,21 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
     weights: list[Weight] = []
     vax: list[Vaccination] = []
 
-    reasons = ["Annual check-up", "Vaccination", "Skin irritation", "Limping", "Dental", "Worming advice", "Weight check"]
+    routine_reasons = [
+        "Annual check-up",
+        "Vaccination",
+        "Skin irritation",
+        "Limping",
+        "Dental",
+        "Worming advice",
+        "Weight check",
+    ]
+    cancellation_reasons = [
+        "Cancelled: owner unavailable",
+        "Cancelled: clinic reschedule",
+        "No show: owner did not attend",
+        "Did not attend",
+    ]
 
     clinic_by_bucket: dict[str, list[Organisation]] = {"SOUTH": [], "NORTH_EAST": [], "NORTH_WEST": [], "UNKNOWN": []}
     for clinic in clinics:
@@ -1152,12 +1235,18 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
             else:
                 vet = random.choice(vet_users) if vet_users else None
 
+            # Seed a meaningful cancellation/no-show rate for analytics/testing.
+            if random.random() < 0.18:
+                reason = random.choice(cancellation_reasons)
+            else:
+                reason = random.choice(routine_reasons)
+
             visit = VetVisit(
                 pet_id=p.pet_id,
                 organisation_id=clinic.organisation_id,
                 vet_user_id=vet.user_id if vet else None,
                 visit_datetime=visit_dt,
-                reason=random.choice(reasons),
+                reason=reason,
                 notes_visible_to_owner=fake.sentence(nb_words=10)
             )
             visits.append(visit)
@@ -1166,6 +1255,12 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
     session.commit()
 
     for v in visits:
+        # Cancelled/no-show visits should not produce measured clinical outcomes.
+        reason_text = (v.reason or "").lower()
+        is_cancelled = ("cancel" in reason_text) or ("no show" in reason_text) or ("did not attend" in reason_text)
+        if is_cancelled:
+            continue
+
         base = 10.0 if random.random() < 0.5 else 4.5
         weight_val = max(1.5, random.gauss(mu=base, sigma=2.0))
         weights.append(Weight(
@@ -1193,6 +1288,207 @@ def seed_visits_weights_vax(session, pets: list[Pet], clinics: list[Organisation
     session.commit()
 
     return (len(visits), len(weights), len(vax))
+
+
+VET_NOTE_TEMPLATES = [
+    "TPR WNL. BCS {bcs}/9. Appetite stable, no vomiting/diarrhoea reported.",
+    "Auscultation NAD. Mild gingivitis present. Recommend dental prophylaxis within {days} days.",
+    "Recheck completed: otitis externa improving. Continue topical therapy and reassess in {days} days.",
+    "Dermatology review: pruritus reduced on current management plan. Continue diet trial for {days} days.",
+    "Orthopaedic exam: intermittent lameness, grade 1/5. Restrict high-impact activity and review in {days} days.",
+    "Weight-management consult: target weight trajectory discussed. Daily ration adjusted; reweigh in {days} days.",
+    "Post-vaccination check: no adverse effects noted. Preventative plan reviewed with owner.",
+]
+
+CONCERN_DESCRIPTIONS = [
+    "Multiple missed appointments in the last 8 weeks; welfare follow-up call required.",
+    "Owner-reported weight differs materially from clinic measure; verify home tracking method.",
+    "Medication adherence uncertain based on refill gap; schedule compliance review.",
+    "Chronic dermatitis not improving as expected; recommend escalation to senior vet.",
+    "Behavioural decline reported with reduced enrichment; welfare check requested.",
+]
+
+
+def seed_owner_notes_flags_and_reminders(
+    session,
+    owners: list[Owner],
+    pets: list[Pet],
+    clinics: list[Organisation],
+    vet_users: list[User],
+) -> tuple[int, int, int]:
+    # Build owner/pet mapping for realistic, linked clinical records.
+    owner_pet_rows = session.execute(
+        text(
+            """
+            SELECT op.owner_id::text AS owner_id, op.pet_id::text AS pet_id
+            FROM owner_pets op
+            WHERE op.end_date IS NULL
+            """
+        )
+    ).mappings().all()
+    pets_by_owner: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for row in owner_pet_rows:
+        oid = uuid.UUID(row["owner_id"])
+        pid = uuid.UUID(row["pet_id"])
+        pets_by_owner.setdefault(oid, []).append(pid)
+
+    # Map pets to likely clinics from prior visits to keep reminders logical.
+    clinic_by_pet: dict[uuid.UUID, uuid.UUID] = {}
+    visit_rows = session.execute(
+        text(
+            """
+            SELECT DISTINCT ON (vv.pet_id)
+              vv.pet_id::text AS pet_id,
+              vv.organisation_id::text AS organisation_id
+            FROM vet_visits vv
+            WHERE vv.organisation_id IS NOT NULL
+            ORDER BY vv.pet_id, vv.visit_datetime DESC
+            """
+        )
+    ).mappings().all()
+    for row in visit_rows:
+        clinic_by_pet[uuid.UUID(row["pet_id"])] = uuid.UUID(row["organisation_id"])
+
+    notes_rows: list[dict] = []
+    concern_rows: list[dict] = []
+    reminder_rows: list[dict] = []
+    now = datetime.now(UTC)
+    vet_ids = [u.user_id for u in vet_users] if vet_users else []
+
+    for owner in owners:
+        owner_pet_ids = pets_by_owner.get(owner.owner_id, [])
+        if not owner_pet_ids:
+            continue
+
+        note_count = random.randint(1, 4)
+        for _ in range(note_count):
+            pet_id = random.choice(owner_pet_ids)
+            template = random.choice(VET_NOTE_TEMPLATES)
+            notes_rows.append(
+                {
+                    "note_id": uuid.uuid4(),
+                    "owner_id": owner.owner_id,
+                    "pet_id": pet_id,
+                    "author_user_id": random.choice(vet_ids) if vet_ids else None,
+                    "note_text": template.format(bcs=random.randint(4, 7), days=random.choice([7, 10, 14, 21, 28])),
+                    "note_type": random.choice(["CHECKUP", "FOLLOWUP", "MEDICATION", "WELFARE"]),
+                    "created_at": now - timedelta(days=random.randint(0, 120)),
+                }
+            )
+
+            # Seed owner reminders suitable for dashboard calendar and follow-up workflows.
+            reminder_rows.append(
+                {
+                    "reminder_id": uuid.uuid4(),
+                    "role_scope": "OWNER",
+                    "user_id": None,
+                    "organisation_id": clinic_by_pet.get(pet_id),
+                    "owner_id": owner.owner_id,
+                    "pet_id": pet_id,
+                    "title": random.choice(["Medication review", "Weight recheck", "Follow-up appointment"]),
+                    "details": "Auto-generated follow-up reminder from latest care plan.",
+                    "reminder_type": random.choice(["FOLLOWUP", "REMINDER"]),
+                    "due_at": now + timedelta(days=random.randint(-20, 45)),
+                    "status": random.choice(["OPEN", "OPEN", "DONE"]),
+                    "created_by_user_id": random.choice(vet_ids) if vet_ids else None,
+                    "created_at": now - timedelta(days=random.randint(0, 30)),
+                }
+            )
+
+        if random.random() < 0.28:
+            concern_pet = random.choice(owner_pet_ids)
+            concern_rows.append(
+                {
+                    "flag_id": uuid.uuid4(),
+                    "owner_id": owner.owner_id,
+                    "pet_id": concern_pet,
+                    "raised_by_user_id": random.choice(vet_ids) if vet_ids else None,
+                    "severity": random.choice(["LOW", "MEDIUM", "HIGH"]),
+                    "status": random.choice(["OPEN", "OPEN", "UNDER_REVIEW"]),
+                    "category": random.choice(["WELFARE", "COMPLIANCE", "MEDICATION", "FOLLOW_UP"]),
+                    "description": random.choice(CONCERN_DESCRIPTIONS),
+                    "created_at": now - timedelta(days=random.randint(0, 90)),
+                }
+            )
+
+    # Seed clinic-level operational reminders for admin and vet dashboards.
+    clinic_ids = [c.organisation_id for c in clinics]
+    for clinic_id in clinic_ids:
+        for _ in range(random.randint(4, 8)):
+            reminder_rows.append(
+                {
+                    "reminder_id": uuid.uuid4(),
+                    "role_scope": "VET",
+                    "user_id": None,
+                    "organisation_id": clinic_id,
+                    "owner_id": None,
+                    "pet_id": None,
+                    "title": random.choice(["Call owner follow-up", "Review cancelled appointments", "Medication stock check"]),
+                    "details": "Clinic operations task generated for monthly workflow tracking.",
+                    "reminder_type": random.choice(["FOLLOWUP", "CONCERN", "REMINDER"]),
+                    "due_at": now + timedelta(days=random.randint(-15, 30)),
+                    "status": random.choice(["OPEN", "OPEN", "DONE"]),
+                    "created_by_user_id": random.choice(vet_ids) if vet_ids else None,
+                    "created_at": now - timedelta(days=random.randint(0, 40)),
+                }
+            )
+        for _ in range(random.randint(3, 6)):
+            reminder_rows.append(
+                {
+                    "reminder_id": uuid.uuid4(),
+                    "role_scope": "ADMIN",
+                    "user_id": None,
+                    "organisation_id": clinic_id,
+                    "owner_id": None,
+                    "pet_id": None,
+                    "title": random.choice(["Audit unresolved concerns", "KPI review meeting", "Investigate missed appointments"]),
+                    "details": "Admin-level calendar item linked to clinic performance monitoring.",
+                    "reminder_type": random.choice(["CONCERN", "REMINDER"]),
+                    "due_at": now + timedelta(days=random.randint(-10, 35)),
+                    "status": random.choice(["OPEN", "OPEN", "DONE"]),
+                    "created_by_user_id": random.choice(vet_ids) if vet_ids else None,
+                    "created_at": now - timedelta(days=random.randint(0, 45)),
+                }
+            )
+
+    for row in notes_rows:
+        session.execute(
+            text(
+                """
+                INSERT INTO owner_notes (note_id, owner_id, pet_id, author_user_id, note_text, note_type, created_at)
+                VALUES (:note_id, :owner_id, :pet_id, :author_user_id, :note_text, :note_type, :created_at)
+                """
+            ),
+            row,
+        )
+    for row in concern_rows:
+        session.execute(
+            text(
+                """
+                INSERT INTO concern_flags (flag_id, owner_id, pet_id, raised_by_user_id, severity, status, category, description, created_at)
+                VALUES (:flag_id, :owner_id, :pet_id, :raised_by_user_id, :severity, :status, :category, :description, :created_at)
+                """
+            ),
+            row,
+        )
+    for row in reminder_rows:
+        session.execute(
+            text(
+                """
+                INSERT INTO dashboard_reminders (
+                  reminder_id, role_scope, user_id, organisation_id, owner_id, pet_id, title, details,
+                  reminder_type, due_at, status, created_by_user_id, created_at
+                )
+                VALUES (
+                  :reminder_id, :role_scope, :user_id, :organisation_id, :owner_id, :pet_id, :title, :details,
+                  :reminder_type, :due_at, :status, :created_by_user_id, :created_at
+                )
+                """
+            ),
+            row,
+        )
+    session.commit()
+    return len(notes_rows), len(concern_rows), len(reminder_rows)
 
 
 def seed_medications(session, pets: list[Pet]) -> int:
@@ -1282,6 +1578,8 @@ if __name__ == "__main__":
         ensure_clinic_profile_columns(session)
         print("Ensuring risk/eligibility tables...")
         ensure_risk_tables(session)
+        print("Ensuring care coordination tables...")
+        ensure_care_coordination_tables(session)
 
         print("Resetting tables...")
         reset_db(session)
@@ -1317,6 +1615,7 @@ if __name__ == "__main__":
         visit_n, weight_n, vax_n = seed_visits_weights_vax(session, pets, clinics, vet_users)
         med_n = seed_medications(session, pets)
         leave_n = seed_staff_leave(session, clinics, vet_users)
+        note_n, concern_n, reminder_n = seed_owner_notes_flags_and_reminders(session, owners, pets, clinics, vet_users)
 
         all_users = session.execute(select(User)).scalars().all()
         creds_path = export_credentials(all_users)
@@ -1324,7 +1623,8 @@ if __name__ == "__main__":
         print(
             f"Done. visits={visit_n}, weights={weight_n}, vaccinations={vax_n}, medications={med_n}, "
             f"staff_leave={leave_n}, vet_practices={practice_n}, practice_staff={practice_staff_n}, "
-            f"practice_staff_sources={practice_staff_source_n}, vet_guidelines={guideline_n}, owner_gov_profiles={gov_profile_n}"
+            f"practice_staff_sources={practice_staff_source_n}, vet_guidelines={guideline_n}, "
+            f"owner_gov_profiles={gov_profile_n}, owner_notes={note_n}, concern_flags={concern_n}, reminders={reminder_n}"
         )
         print(f"Fixed account password: {FIXED_ACCOUNT_PASSWORD}")
         print("Fixed accounts: admin@petprotect.local, vet@petprotect.local, owner@petprotect.local")
